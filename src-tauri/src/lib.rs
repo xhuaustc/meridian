@@ -385,6 +385,18 @@ pub fn run() {
 
             info!("Meridian initialized. Data dir: {:?}", app_data_dir);
 
+            #[cfg(target_os = "macos")]
+            if let Some(window) = app.get_webview_window("main") {
+                use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+                let _ = apply_vibrancy(
+                    &window,
+                    NSVisualEffectMaterial::Sidebar,
+                    None,
+                    None,
+                );
+                info!("Applied macOS sidebar vibrancy effect");
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {
