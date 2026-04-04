@@ -10,7 +10,8 @@ import { useProxyStore } from '../../stores/proxy-store';
 import { useCertStore } from '../../stores/cert-store';
 import { useAccessStore } from '../../stores/access-store';
 import { useToastStore } from '../../stores/toast-store';
-import { checkPortConflict } from '../../lib/api';
+import { checkPortConflict, checkHostnameExists, createHost } from '../../lib/api';
+import { Dialog } from '../ui/Dialog';
 import { cn } from '../../lib/utils';
 import type { ProxyRule, ProxyType, TlsMode, CreateProxyRule, UpdateProxyRule } from '../../types';
 
@@ -66,6 +67,9 @@ export function ProxyForm({ rule }: ProxyFormProps) {
   const [portWarning, setPortWarning] = useState('');
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
+  const [showHostsPrompt, setShowHostsPrompt] = useState(false);
+  const [hostsPromptDomain, setHostsPromptDomain] = useState('');
+  const [hostsPromptIp, setHostsPromptIp] = useState('127.0.0.1');
 
   useEffect(() => {
     fetchCertificates();
@@ -192,6 +196,19 @@ export function ProxyForm({ rule }: ProxyFormProps) {
         };
         await createProxy(input);
         addToast('success', t('proxyForm.createSuccess'));
+
+        // Check if domain needs a hosts entry
+        if (domain.trim() && !isStream) {
+          try {
+            const existing = await checkHostnameExists(domain.trim());
+            if (!existing) {
+              setHostsPromptDomain(domain.trim());
+              setHostsPromptIp('127.0.0.1');
+              setShowHostsPrompt(true);
+              return; // Don't navigate yet — show dialog first
+            }
+          } catch { /* ignore check failure */ }
+        }
       }
 
       navigate('/');
@@ -452,6 +469,48 @@ export function ProxyForm({ rule }: ProxyFormProps) {
           {t('proxyForm.save')}
         </Button>
       </div>
+      {/* Hosts entry prompt after proxy creation */}
+      <Dialog
+        open={showHostsPrompt}
+        onClose={() => { setShowHostsPrompt(false); navigate('/'); }}
+        title={t('hosts.promptTitle')}
+        footer={
+          <>
+            <Button onClick={() => { setShowHostsPrompt(false); navigate('/'); }}>
+              {t('hosts.promptSkip')}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={async () => {
+                try {
+                  await createHost({ ip: hostsPromptIp, hostname: hostsPromptDomain });
+                  addToast('success', t('hosts.createSuccess'));
+                } catch (e) {
+                  addToast('error', String(e));
+                }
+                setShowHostsPrompt(false);
+                navigate('/');
+              }}
+            >
+              {t('hosts.promptAdd')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[13px] text-text-secondary mb-3">
+          {t('hosts.promptMessage', { domain: hostsPromptDomain })}
+        </p>
+        <div>
+          <label className="block text-[12px] font-medium text-text-secondary mb-1">
+            {t('hosts.ip')}
+          </label>
+          <Input
+            value={hostsPromptIp}
+            onChange={(e) => setHostsPromptIp(e.target.value)}
+            placeholder="127.0.0.1"
+          />
+        </div>
+      </Dialog>
     </div>
   );
 }
