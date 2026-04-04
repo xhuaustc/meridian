@@ -199,6 +199,24 @@ pub struct AccessListDetail {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostEntry {
+    pub id: String,
+    pub ip: String,
+    pub hostname: String,
+    pub comment: Option<String>,
+    pub enabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateHostEntry {
+    pub ip: String,
+    pub hostname: String,
+    pub comment: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportData {
     pub version: String,
     pub exported_at: String,

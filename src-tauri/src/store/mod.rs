@@ -101,6 +101,16 @@ fn run_migrations(conn: &Connection) -> Result<(), AppError> {
             ca_url TEXT NOT NULL,
             created_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS host_entries (
+            id TEXT PRIMARY KEY,
+            ip TEXT NOT NULL,
+            hostname TEXT NOT NULL UNIQUE,
+            comment TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
         ",
     )?;
 
