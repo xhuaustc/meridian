@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "轻渡 Meridian",
+  "productName": "Meridian",
   "version": "0.1.0",
   "identifier": "com.meridian.app",
   "build": {
