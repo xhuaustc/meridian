@@ -48,6 +48,8 @@
     "colActions": "",
     "statusActive": "Active",
     "statusOff": "Off",
+    "logs": "日志",
+    "monitor": "监控",
     "edit": "编辑",
     "copy": "复制",
     "delete": "删除",

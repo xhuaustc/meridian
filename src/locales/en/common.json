@@ -48,6 +48,8 @@
     "colActions": "",
     "statusActive": "Active",
     "statusOff": "Off",
+    "logs": "Logs",
+    "monitor": "Monitor",
     "edit": "Edit",
     "copy": "Duplicate",
     "delete": "Delete",

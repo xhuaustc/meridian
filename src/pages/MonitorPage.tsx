@@ -1,6 +1,7 @@
 // SPEC: FEAT-002-proxy-monitoring/spec.md | TASK-006
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, BarChart3 } from 'lucide-react';
 import { Select } from '../components/ui/Select';
 import {
@@ -59,8 +60,9 @@ function formatTime(iso: string, range: TimeRange): string {
 export function MonitorPage() {
   const { t } = useTranslation('common');
   const { proxies, fetchProxies } = useProxyStore();
+  const [searchParams] = useSearchParams();
 
-  const [ruleId, setRuleId] = useState<string | undefined>(undefined);
+  const [ruleId, setRuleId] = useState<string | undefined>(() => searchParams.get('proxyId') || undefined);
   const [timeRange, setTimeRange] = useState<TimeRange>('1h');
   const [metrics, setMetrics] = useState<ProxyMetrics | null>(null);
   const [loading, setLoading] = useState(false);

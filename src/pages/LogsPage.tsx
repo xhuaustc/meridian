@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, ClipboardList } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Select';
@@ -38,10 +39,11 @@ export function LogsPage() {
   const { t } = useTranslation('common');
   const addToast = useToastStore((s) => s.addToast);
   const { proxies, fetchProxies } = useProxyStore();
+  const [searchParams] = useSearchParams();
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const [tab, setTab] = useState<LogTab>('access');
-  const [ruleId, setRuleId] = useState<string>('');
+  const [ruleId, setRuleId] = useState<string>(() => searchParams.get('proxyId') || '');
   const [lines, setLines] = useState<string[]>([]);
   const [totalLines, setTotalLines] = useState(0);
   const [loading, setLoading] = useState(false);

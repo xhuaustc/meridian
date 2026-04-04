@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Pencil, Copy, Trash2, BarChart3 } from 'lucide-react';
+import { Plus, Search, Pencil, Copy, Trash2, BarChart3, ClipboardList, Activity } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Toggle } from '../components/ui/Toggle';
@@ -10,6 +10,7 @@ import { useProxyStore } from '../stores/proxy-store';
 import { useCertStore } from '../stores/cert-store';
 import { useToastStore } from '../stores/toast-store';
 import { checkExpiringCerts, createProxy } from '../lib/api';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { cn } from '../lib/utils';
 import type { ProxyRule } from '../types';
 
@@ -26,13 +27,20 @@ function getBadgeVariant(type: string): 'http' | 'https' | 'tcp' | 'udp' {
   return type.toLowerCase() as 'http' | 'https' | 'tcp' | 'udp';
 }
 
-function getRoute(rule: ProxyRule): { from: string; to: string } {
+function getRoute(rule: ProxyRule): { from: string; to: string; href: string | null } {
   const isStream = rule.proxy_type === 'stream_tcp' || rule.proxy_type === 'stream_udp';
+  const scheme = rule.tls_mode === 'terminate' || rule.tls_mode === 'passthrough' ? 'https' : 'http';
   const from = isStream
     ? `:${rule.listen_port}`
-    : `${rule.domain || ''}:${rule.listen_port}${rule.path_prefix || '/'}`;
+    : `${scheme}://${rule.domain || ''}:${rule.listen_port}${rule.path_prefix || '/'}`;
   const to = `${rule.upstream_host}:${rule.upstream_port}`;
-  return { from, to };
+  let href: string | null = null;
+  if (!isStream && rule.domain) {
+    const defaultPort = scheme === 'https' ? 443 : 80;
+    const portPart = rule.listen_port === defaultPort ? '' : `:${rule.listen_port}`;
+    href = `${scheme}://${rule.domain}${portPart}${rule.path_prefix || '/'}`;
+  }
+  return { from, to, href };
 }
 
 export function DashboardPage() {
@@ -278,7 +286,23 @@ export function DashboardPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3 font-mono text-[12px] text-text-secondary">
-                      {route.from}
+                      {route.href ? (
+                        <button
+                          className={cn(
+                            'hover:underline cursor-pointer bg-transparent border-none p-0 font-mono text-[12px]',
+                            rule.enabled ? 'text-accent' : 'text-text-tertiary cursor-not-allowed',
+                          )}
+                          disabled={!rule.enabled}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openUrl(route.href!);
+                          }}
+                        >
+                          {route.from}
+                        </button>
+                      ) : (
+                        route.from
+                      )}
                       <span className="text-text-tertiary mx-1.5">&rarr;</span>
                       <span className="text-text-primary">{route.to}</span>
                     </td>
@@ -308,6 +332,20 @@ export function DashboardPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                        <button
+                          onClick={() => navigate(`/logs?proxyId=${rule.id}`)}
+                          className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-sidebar hover:text-text-primary"
+                          title={t('dashboard.logs')}
+                        >
+                          <ClipboardList className="w-[15px] h-[15px]" />
+                        </button>
+                        <button
+                          onClick={() => navigate(`/monitor?proxyId=${rule.id}`)}
+                          className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-sidebar hover:text-text-primary"
+                          title={t('dashboard.monitor')}
+                        >
+                          <Activity className="w-[15px] h-[15px]" />
+                        </button>
                         <button
                           onClick={() => navigate(`/proxy/${rule.id}`)}
                           className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-sidebar hover:text-text-primary"
