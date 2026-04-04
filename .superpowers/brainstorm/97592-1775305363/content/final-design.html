@@ -1,0 +1,145 @@
+<h2>完整设计方案：三平台原生桌面风格</h2>
+<p class="subtitle">所有决策汇总，请确认后进入 spec 文档编写</p>
+
+<div class="section">
+  <h3>1. 布局结构重构</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <div style="padding:16px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;">
+      <div style="font-weight:600;color:#991b1b;margin-bottom:8px;">当前（Before）</div>
+      <div style="font-size:12px;color:#7f1d1d;line-height:1.7;">
+        <code style="background:#fee2e2;padding:2px 6px;border-radius:3px;">decorations: true</code> → 系统原生标题栏<br>
+        + 自定义 Titlebar 组件（引擎状态、启停、主题、语言）<br>
+        = <strong>双层标题栏</strong>，48px + 系统栏 ≈ 80px 浪费<br><br>
+        侧边栏：纯色 <code style="background:#fee2e2;padding:2px 6px;border-radius:3px;">#f5f5f4</code> 背景<br>
+        三平台完全相同的 Web 风格
+      </div>
+    </div>
+    <div style="padding:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
+      <div style="font-weight:600;color:#166534;margin-bottom:8px;">改后（After）</div>
+      <div style="font-size:12px;color:#14532d;line-height:1.7;">
+        <strong>macOS：</strong>隐藏原生标题栏，交通灯嵌入侧边栏顶部<br>
+        <strong>Windows/Linux：</strong>保留原生标题栏，删除自定义 Titlebar<br><br>
+        侧边栏纯导航，引擎状态移入内容区顶栏<br>
+        主题/语言切换移入设置页<br>
+        <strong>消除双层标题栏 → 单层</strong>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:20px;">
+  <h3>2. 平台视觉适配</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.6;">
+    <thead>
+      <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
+        <th style="padding:10px 14px;text-align:left;color:#475569;font-weight:600;">特性</th>
+        <th style="padding:10px 14px;text-align:left;color:#475569;font-weight:600;">macOS</th>
+        <th style="padding:10px 14px;text-align:left;color:#475569;font-weight:600;">Windows 11</th>
+        <th style="padding:10px 14px;text-align:left;color:#475569;font-weight:600;">Linux</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:8px 14px;color:#64748b;font-weight:500;">标题栏</td>
+        <td style="padding:8px 14px;">隐藏，overlay 交通灯</td>
+        <td style="padding:8px 14px;">保留系统原生</td>
+        <td style="padding:8px 14px;">保留系统原生</td>
+      </tr>
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:8px 14px;color:#64748b;font-weight:500;">侧边栏材质</td>
+        <td style="padding:8px 14px;">NSVisualEffectView 毛玻璃<br><span style="color:#78716c;font-size:11px;">深色模式自动适配</span></td>
+        <td style="padding:8px 14px;">Mica 半透明材质<br><span style="color:#78716c;font-size:11px;">通过 window-effects 插件</span></td>
+        <td style="padding:8px 14px;">微妙纯色背景<br><span style="color:#78716c;font-size:11px;">GTK Adwaita 风格</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:8px 14px;color:#64748b;font-weight:500;">窗口拖拽区</td>
+        <td style="padding:8px 14px;">侧边栏顶部 + 内容区顶栏</td>
+        <td style="padding:8px 14px;">系统标题栏（自带）</td>
+        <td style="padding:8px 14px;">系统标题栏（自带）</td>
+      </tr>
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:8px 14px;color:#64748b;font-weight:500;">强调色</td>
+        <td style="padding:8px 14px;">#2563eb（蓝）</td>
+        <td style="padding:8px 14px;">#0067c0（Windows 蓝）</td>
+        <td style="padding:8px 14px;">#3584e4（GNOME 蓝）</td>
+      </tr>
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:8px 14px;color:#64748b;font-weight:500;">圆角</td>
+        <td style="padding:8px 14px;">6-8px</td>
+        <td style="padding:8px 14px;">4px（Win11 风格）</td>
+        <td style="padding:8px 14px;">6-8px（Adwaita 风格）</td>
+      </tr>
+      <tr style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:8px 14px;color:#64748b;font-weight:500;">字体</td>
+        <td style="padding:8px 14px;">SF Pro（系统默认）</td>
+        <td style="padding:8px 14px;">Segoe UI</td>
+        <td style="padding:8px 14px;">Cantarell / Noto Sans</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 14px;color:#64748b;font-weight:500;">深色模式</td>
+        <td style="padding:8px 14px;" colspan="3">三平台统一：跟随系统自动切换，毛玻璃/Mica 材质自动适配暗色</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section" style="margin-top:20px;">
+  <h3>3. 组件层面改进</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div style="padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;line-height:1.7;">
+      <div style="font-weight:600;color:#1e293b;margin-bottom:6px;">侧边栏 Sidebar</div>
+      <div style="color:#475569;">
+        • 纯导航，移除所有非导航元素<br>
+        • macOS：顶部留 52px 空间给交通灯 + 应用名<br>
+        • Windows/Linux：顶部无需额外留空<br>
+        • 选中项高亮跟随平台强调色
+      </div>
+    </div>
+    <div style="padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;line-height:1.7;">
+      <div style="font-weight:600;color:#1e293b;margin-bottom:6px;">内容区顶栏 Toolbar</div>
+      <div style="color:#475569;">
+        • 替代原 Titlebar 组件<br>
+        • 左侧：页面标题<br>
+        • 右侧：引擎状态 pill + 启停/重载 + 页面操作按钮<br>
+        • macOS 作为窗口拖拽区
+      </div>
+    </div>
+    <div style="padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;line-height:1.7;">
+      <div style="font-weight:600;color:#1e293b;margin-bottom:6px;">卡片与表格</div>
+      <div style="color:#475569;">
+        • 增加微阴影提升层次感<br>
+        • hover 行背景变化更明显<br>
+        • 过渡动画 150-200ms ease
+      </div>
+    </div>
+    <div style="padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;line-height:1.7;">
+      <div style="font-weight:600;color:#1e293b;margin-bottom:6px;">设置页</div>
+      <div style="color:#475569;">
+        • 新增主题切换（从标题栏迁入）<br>
+        • 新增语言切换（从标题栏迁入）<br>
+        • 保留已有设置项
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:20px;">
+  <h3>4. 技术实现要点</h3>
+  <div style="padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;line-height:1.8;color:#475569;">
+    <strong style="color:#1e293b;">Rust 端</strong><br>
+    • macOS：<code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;">decorations: false</code> + <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;">titleBarStyle: "overlay"</code> 或 <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;">transparent: true</code><br>
+    • macOS：使用 <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;">objc2-app-kit</code>（已有依赖）设置 NSVisualEffectView<br>
+    • Windows：引入 <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;">window-vibrancy</code> crate 启用 Mica<br>
+    • 新增 IPC 命令 <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;">get_platform</code> 返回 "macos" | "windows" | "linux"<br><br>
+    <strong style="color:#1e293b;">前端</strong><br>
+    • 平台检测 hook：<code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;">usePlatform()</code> 返回当前平台<br>
+    • CSS 层：<code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;">[data-platform="macos"]</code> / <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;">[data-platform="windows"]</code> / <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;">[data-platform="linux"]</code> 选择器<br>
+    • AppShell 布局根据平台调整 grid（macOS 无系统标题栏行）<br>
+    • 删除 Titlebar 组件，新建 ContentToolbar 组件<br>
+    • 平台色彩 token 覆盖
+  </div>
+</div>
+
+<div style="margin-top:24px;padding:16px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;font-size:13px;color:#92400e;line-height:1.6;">
+  <strong>不在本次范围内：</strong>自定义窗口控件（Windows/Linux 保留原生）· 系统强调色动态读取（使用固定平台色）· 侧边栏可拖拽调整宽度 · 动效系统（仅做基础 hover/transition）
+</div>

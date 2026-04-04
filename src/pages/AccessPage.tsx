@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, Shield } from 'lucide-react';
+import { ContentToolbar } from '../components/layout/ContentToolbar';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Input } from '../components/ui/Input';
@@ -76,17 +77,14 @@ export function AccessPage() {
   };
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-[18px] font-semibold tracking-[-0.02em]">
-          {t('access.title')}
-        </h1>
+    <>
+      <ContentToolbar title={t('access.title')}>
         <Button variant="primary" onClick={() => setShowCreate(true)}>
           <Plus className="w-3.5 h-3.5" />
           {t('access.createList')}
         </Button>
-      </div>
-
+      </ContentToolbar>
+      <div className="p-6 overflow-y-auto flex-1">
       {lists.length === 0 ? (
         <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] py-16 flex flex-col items-center justify-center">
           <Shield className="w-10 h-10 text-text-tertiary mb-3" />
@@ -264,6 +262,7 @@ export function AccessPage() {
         confirmText={t('common.delete')}
         danger
       />
-    </div>
+      </div>
+    </>
   );
 }

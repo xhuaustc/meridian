@@ -1,0 +1,267 @@
+<h2>三平台原生风格方向</h2>
+<p class="subtitle">每个平台使用各自的原生视觉特性，以下是关键差异对比</p>
+
+<div class="section">
+  <h3>macOS — 毛玻璃 + 交通灯融合</h3>
+  <div class="mockup">
+    <div class="mockup-header">macOS Preview</div>
+    <div class="mockup-body" style="padding:0;overflow:hidden;background:#1c1917;">
+      <div style="display:grid;grid-template-columns:220px 1fr;height:420px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:13px;">
+        <!-- Sidebar with vibrancy -->
+        <div style="background:rgba(245,245,244,0.72);backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border-right:1px solid rgba(0,0,0,0.08);display:flex;flex-direction:column;">
+          <!-- Titlebar area with traffic lights -->
+          <div style="height:52px;display:flex;align-items:center;padding:0 16px;gap:8px;">
+            <div style="display:flex;gap:8px;margin-right:8px;">
+              <div style="width:12px;height:12px;border-radius:50%;background:#ff5f57;"></div>
+              <div style="width:12px;height:12px;border-radius:50%;background:#febc2e;"></div>
+              <div style="width:12px;height:12px;border-radius:50%;background:#28c840;"></div>
+            </div>
+            <span style="color:#1c1917;font-weight:600;font-size:13px;margin-left:4px;">Meridian</span>
+          </div>
+          <!-- Nav items -->
+          <div style="padding:8px 12px;flex:1;">
+            <div style="color:#78716c;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;padding:4px 8px;margin-bottom:4px;">代理管理</div>
+            <div style="background:rgba(37,99,235,0.12);color:#2563eb;padding:7px 10px;border-radius:6px;font-weight:500;display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+              <span style="opacity:0.8;">⊞</span> 仪表盘 <span style="margin-left:auto;background:rgba(37,99,235,0.15);color:#2563eb;font-size:11px;padding:1px 7px;border-radius:10px;">3</span>
+            </div>
+            <div style="color:#44403c;padding:7px 10px;border-radius:6px;display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+              <span style="opacity:0.5;">◎</span> 证书管理
+            </div>
+            <div style="color:#44403c;padding:7px 10px;border-radius:6px;display:flex;align-items:center;gap:8px;">
+              <span style="opacity:0.5;">☰</span> 访问控制
+            </div>
+            <div style="color:#78716c;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;padding:4px 8px;margin-top:12px;margin-bottom:4px;">系统</div>
+            <div style="color:#44403c;padding:7px 10px;border-radius:6px;display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+              <span style="opacity:0.5;">◉</span> 监控
+            </div>
+            <div style="color:#44403c;padding:7px 10px;border-radius:6px;display:flex;align-items:center;gap:8px;">
+              <span style="opacity:0.5;">≡</span> 日志
+            </div>
+          </div>
+        </div>
+        <!-- Main content -->
+        <div style="background:#fafaf9;display:flex;flex-direction:column;">
+          <!-- Toolbar in content area -->
+          <div style="height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid #e7e5e4;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:15px;font-weight:600;color:#1c1917;">仪表盘</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="display:flex;align-items:center;gap:6px;background:#dcfce7;color:#16a34a;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:500;">
+                <div style="width:6px;height:6px;border-radius:50%;background:#16a34a;"></div>
+                Nginx 运行中
+              </div>
+              <div style="background:#f5f5f4;border:1px solid #e7e5e4;padding:5px 12px;border-radius:6px;font-size:12px;color:#78716c;">+ 添加代理</div>
+            </div>
+          </div>
+          <!-- Table -->
+          <div style="padding:16px 20px;flex:1;">
+            <div style="background:white;border:1px solid #e7e5e4;border-radius:8px;overflow:hidden;">
+              <div style="display:grid;grid-template-columns:2fr 1fr 3fr 1fr;padding:8px 16px;background:#f5f5f4;font-size:11px;color:#78716c;font-weight:500;text-transform:uppercase;letter-spacing:0.3px;border-bottom:1px solid #e7e5e4;">
+                <span>名称</span><span>类型</span><span>路由</span><span>状态</span>
+              </div>
+              <div style="display:grid;grid-template-columns:2fr 1fr 3fr 1fr;padding:10px 16px;border-bottom:1px solid #f5f5f4;align-items:center;">
+                <span style="color:#1c1917;font-weight:500;">My API</span>
+                <span><span style="background:#eff6ff;color:#2563eb;font-size:11px;padding:2px 8px;border-radius:4px;">HTTP</span></span>
+                <span style="font-family:monospace;font-size:11px;color:#78716c;">http://api.dev:8080/ → 127.0.0.1:3000</span>
+                <span style="color:#16a34a;font-size:12px;">● Active</span>
+              </div>
+              <div style="display:grid;grid-template-columns:2fr 1fr 3fr 1fr;padding:10px 16px;align-items:center;">
+                <span style="color:#1c1917;font-weight:500;">Web App</span>
+                <span><span style="background:#fef3c7;color:#d97706;font-size:11px;padding:2px 8px;border-radius:4px;">HTTPS</span></span>
+                <span style="font-family:monospace;font-size:11px;color:#78716c;">https://app.dev:443/ → 127.0.0.1:5173</span>
+                <span style="color:#16a34a;font-size:12px;">● Active</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:8px;padding:12px 16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:13px;color:#0369a1;">
+    <strong>关键特性：</strong>隐藏原生标题栏 → 交通灯融入侧边栏顶部 · 侧边栏毛玻璃半透明（NSVisualEffectView） · 窗口拖拽区在侧边栏顶部和内容区顶栏 · 系统级圆角
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <h3>Windows 11 — Mica 材质 + 系统窗口控件</h3>
+  <div class="mockup">
+    <div class="mockup-header">Windows 11 Preview</div>
+    <div class="mockup-body" style="padding:0;overflow:hidden;">
+      <div style="font-family:'Segoe UI',sans-serif;font-size:13px;height:420px;display:flex;flex-direction:column;">
+        <!-- Windows titlebar -->
+        <div style="height:32px;background:linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03)),#f3f3f3;display:flex;align-items:center;justify-content:space-between;padding-left:12px;border-bottom:1px solid #e5e5e5;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:16px;height:16px;background:#2563eb;border-radius:3px;"></div>
+            <span style="font-size:12px;color:#1a1a1a;">Meridian</span>
+          </div>
+          <div style="display:flex;height:100%;">
+            <div style="width:46px;display:flex;align-items:center;justify-content:center;color:#666;font-size:10px;">─</div>
+            <div style="width:46px;display:flex;align-items:center;justify-content:center;color:#666;font-size:10px;">☐</div>
+            <div style="width:46px;display:flex;align-items:center;justify-content:center;color:#666;font-size:10px;background:rgba(0,0,0,0.03);">✕</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:220px 1fr;flex:1;">
+          <!-- Sidebar with Mica -->
+          <div style="background:linear-gradient(180deg,rgba(249,249,249,0.95),rgba(243,243,243,0.92));border-right:1px solid #e5e5e5;display:flex;flex-direction:column;padding:8px;">
+            <!-- Engine status -->
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:8px;">
+              <div style="display:flex;align-items:center;gap:6px;background:#dff6dd;color:#107c10;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:500;flex:1;">
+                <div style="width:6px;height:6px;border-radius:50%;background:#107c10;"></div>
+                Nginx Running
+              </div>
+            </div>
+            <div style="color:#5d5d5d;font-size:11px;font-weight:600;padding:4px 10px;margin-bottom:2px;">代理管理</div>
+            <div style="background:rgba(0,103,192,0.08);color:#0067c0;padding:8px 10px;border-radius:4px;font-weight:500;display:flex;align-items:center;gap:8px;margin-bottom:1px;">
+              <span>⊞</span> 仪表盘 <span style="margin-left:auto;background:rgba(0,103,192,0.12);font-size:11px;padding:1px 7px;border-radius:10px;">3</span>
+            </div>
+            <div style="color:#1a1a1a;padding:8px 10px;border-radius:4px;display:flex;align-items:center;gap:8px;margin-bottom:1px;">
+              <span style="opacity:0.5;">◎</span> 证书管理
+            </div>
+            <div style="color:#1a1a1a;padding:8px 10px;border-radius:4px;display:flex;align-items:center;gap:8px;">
+              <span style="opacity:0.5;">☰</span> 访问控制
+            </div>
+            <div style="color:#5d5d5d;font-size:11px;font-weight:600;padding:4px 10px;margin-top:12px;margin-bottom:2px;">系统</div>
+            <div style="color:#1a1a1a;padding:8px 10px;border-radius:4px;display:flex;align-items:center;gap:8px;margin-bottom:1px;">
+              <span style="opacity:0.5;">◉</span> 监控
+            </div>
+            <div style="color:#1a1a1a;padding:8px 10px;border-radius:4px;display:flex;align-items:center;gap:8px;">
+              <span style="opacity:0.5;">≡</span> 日志
+            </div>
+          </div>
+          <!-- Main content -->
+          <div style="background:#fafafa;display:flex;flex-direction:column;">
+            <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e5e5;">
+              <span style="font-size:20px;font-weight:600;color:#1a1a1a;">仪表盘</span>
+              <div style="background:#0067c0;color:white;padding:6px 16px;border-radius:4px;font-size:12px;font-weight:500;">+ 添加代理</div>
+            </div>
+            <div style="padding:16px 20px;flex:1;">
+              <div style="background:white;border:1px solid #e5e5e5;border-radius:4px;overflow:hidden;">
+                <div style="display:grid;grid-template-columns:2fr 1fr 3fr 1fr;padding:10px 16px;background:#f9f9f9;font-size:11px;color:#5d5d5d;font-weight:600;border-bottom:1px solid #e5e5e5;">
+                  <span>名称</span><span>类型</span><span>路由</span><span>状态</span>
+                </div>
+                <div style="display:grid;grid-template-columns:2fr 1fr 3fr 1fr;padding:10px 16px;border-bottom:1px solid #f3f3f3;align-items:center;">
+                  <span style="color:#1a1a1a;font-weight:500;">My API</span>
+                  <span><span style="background:#e8f0fe;color:#0067c0;font-size:11px;padding:2px 8px;border-radius:2px;">HTTP</span></span>
+                  <span style="font-family:'Cascadia Code',monospace;font-size:11px;color:#5d5d5d;">http://api.dev:8080/ → 127.0.0.1:3000</span>
+                  <span style="color:#107c10;font-size:12px;">● Active</span>
+                </div>
+                <div style="display:grid;grid-template-columns:2fr 1fr 3fr 1fr;padding:10px 16px;align-items:center;">
+                  <span style="color:#1a1a1a;font-weight:500;">Web App</span>
+                  <span><span style="background:#fff4ce;color:#9d5d00;font-size:11px;padding:2px 8px;border-radius:2px;">HTTPS</span></span>
+                  <span style="font-family:'Cascadia Code',monospace;font-size:11px;color:#5d5d5d;">https://app.dev:443/ → 127.0.0.1:5173</span>
+                  <span style="color:#107c10;font-size:12px;">● Active</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:8px;padding:12px 16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:13px;color:#0369a1;">
+    <strong>关键特性：</strong>保留原生窗口控件（最小化/最大化/关闭） · Mica 半透明材质侧边栏 · Windows 11 圆角 4px · Segoe UI 字体 · 系统强调色（默认蓝 #0067c0）
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <h3>Linux (GTK) — 简洁功能型</h3>
+  <div class="mockup">
+    <div class="mockup-header">Linux / GTK Preview</div>
+    <div class="mockup-body" style="padding:0;overflow:hidden;">
+      <div style="font-family:'Cantarell','Noto Sans',sans-serif;font-size:13px;height:420px;display:flex;flex-direction:column;">
+        <!-- GTK headerbar -->
+        <div style="height:38px;background:linear-gradient(180deg,#f6f5f4,#edebe9);display:flex;align-items:center;justify-content:space-between;padding:0 8px;border-bottom:1px solid #cdc7c2;">
+          <div style="display:flex;align-items:center;gap:8px;padding-left:4px;">
+            <div style="width:16px;height:16px;background:#2563eb;border-radius:4px;"></div>
+            <span style="font-size:13px;font-weight:700;color:#2e3436;">Meridian</span>
+          </div>
+          <div style="display:flex;gap:4px;">
+            <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:#2e3436;font-size:11px;">─</div>
+            <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:#2e3436;font-size:11px;">☐</div>
+            <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:#2e3436;font-size:11px;">✕</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:220px 1fr;flex:1;">
+          <!-- Sidebar - flat GTK style -->
+          <div style="background:#f6f5f4;border-right:1px solid #cdc7c2;display:flex;flex-direction:column;padding:6px;">
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:6px;">
+              <div style="display:flex;align-items:center;gap:6px;background:#d5edda;color:#1b6e2b;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;flex:1;">
+                <div style="width:6px;height:6px;border-radius:50%;background:#1b6e2b;"></div>
+                Nginx Running
+              </div>
+            </div>
+            <div style="color:#77767b;font-size:11px;font-weight:700;padding:4px 10px;margin-bottom:2px;">代理管理</div>
+            <div style="background:#3584e4;color:white;padding:8px 10px;border-radius:6px;font-weight:500;display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+              <span>⊞</span> 仪表盘 <span style="margin-left:auto;background:rgba(255,255,255,0.2);font-size:11px;padding:1px 7px;border-radius:10px;">3</span>
+            </div>
+            <div style="color:#2e3436;padding:8px 10px;border-radius:6px;display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+              <span style="opacity:0.5;">◎</span> 证书管理
+            </div>
+            <div style="color:#2e3436;padding:8px 10px;border-radius:6px;display:flex;align-items:center;gap:8px;">
+              <span style="opacity:0.5;">☰</span> 访问控制
+            </div>
+            <div style="color:#77767b;font-size:11px;font-weight:700;padding:4px 10px;margin-top:12px;margin-bottom:2px;">系统</div>
+            <div style="color:#2e3436;padding:8px 10px;border-radius:6px;display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+              <span style="opacity:0.5;">◉</span> 监控
+            </div>
+            <div style="color:#2e3436;padding:8px 10px;border-radius:6px;display:flex;align-items:center;gap:8px;">
+              <span style="opacity:0.5;">≡</span> 日志
+            </div>
+          </div>
+          <!-- Main content -->
+          <div style="background:#fafafa;display:flex;flex-direction:column;">
+            <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #cdc7c2;">
+              <span style="font-size:18px;font-weight:700;color:#2e3436;">仪表盘</span>
+              <div style="background:#3584e4;color:white;padding:7px 16px;border-radius:6px;font-size:12px;font-weight:500;">+ 添加代理</div>
+            </div>
+            <div style="padding:16px 20px;flex:1;">
+              <div style="background:white;border:1px solid #cdc7c2;border-radius:8px;overflow:hidden;">
+                <div style="display:grid;grid-template-columns:2fr 1fr 3fr 1fr;padding:10px 16px;background:#f6f5f4;font-size:11px;color:#77767b;font-weight:700;border-bottom:1px solid #cdc7c2;">
+                  <span>名称</span><span>类型</span><span>路由</span><span>状态</span>
+                </div>
+                <div style="display:grid;grid-template-columns:2fr 1fr 3fr 1fr;padding:10px 16px;border-bottom:1px solid #f0efee;align-items:center;">
+                  <span style="color:#2e3436;font-weight:500;">My API</span>
+                  <span><span style="background:#dce8fc;color:#1a5fb4;font-size:11px;padding:2px 8px;border-radius:4px;">HTTP</span></span>
+                  <span style="font-family:'Source Code Pro',monospace;font-size:11px;color:#77767b;">http://api.dev:8080/ → 127.0.0.1:3000</span>
+                  <span style="color:#1b6e2b;font-size:12px;">● Active</span>
+                </div>
+                <div style="display:grid;grid-template-columns:2fr 1fr 3fr 1fr;padding:10px 16px;align-items:center;">
+                  <span style="color:#2e3436;font-weight:500;">Web App</span>
+                  <span><span style="background:#f9f0cb;color:#9d5d00;font-size:11px;padding:2px 8px;border-radius:4px;">HTTPS</span></span>
+                  <span style="font-family:'Source Code Pro',monospace;font-size:11px;color:#77767b;">https://app.dev:443/ → 127.0.0.1:5173</span>
+                  <span style="color:#1b6e2b;font-size:12px;">● Active</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:8px;padding:12px 16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:13px;color:#0369a1;">
+    <strong>关键特性：</strong>保留系统原生标题栏（兼容各 DE） · 扁平 GTK 风侧边栏 · 选中项实色填充 · Adwaita 配色 · 圆角 6-8px · 无透明/模糊效果（兼容性优先）
+  </div>
+</div>
+
+<div class="section" style="margin-top:32px;">
+  <h3>三平台共性改进（无论哪个平台都会做的）</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div style="padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+      <div style="font-weight:600;color:#1e293b;margin-bottom:6px;">🔲 消除双标题栏</div>
+      <div style="font-size:12px;color:#64748b;">macOS 隐藏原生标题栏，Windows/Linux 将工具栏融入原生标题栏区域或紧贴其下方</div>
+    </div>
+    <div style="padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+      <div style="font-weight:600;color:#1e293b;margin-bottom:6px;">🎨 平台自适应色彩</div>
+      <div style="font-size:12px;color:#64748b;">macOS 石色暖调，Windows 跟随系统强调色，Linux Adwaita 色板</div>
+    </div>
+    <div style="padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+      <div style="font-weight:600;color:#1e293b;margin-bottom:6px;">✨ 侧边栏材质升级</div>
+      <div style="font-size:12px;color:#64748b;">macOS 毛玻璃 · Windows Mica · Linux 微妙纹理背景</div>
+    </div>
+    <div style="padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+      <div style="font-weight:600;color:#1e293b;margin-bottom:6px;">🖱 精致交互反馈</div>
+      <div style="font-size:12px;color:#64748b;">hover 高亮过渡、按钮按压效果、列表行悬浮背景变化、平滑切换动画</div>
+    </div>
+  </div>
+</div>

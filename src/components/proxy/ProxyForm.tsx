@@ -225,12 +225,6 @@ export function ProxyForm({ rule }: ProxyFormProps) {
         {t('proxyForm.backToList')}
       </button>
 
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-[18px] font-semibold tracking-[-0.02em]">
-          {isEdit ? t('proxyForm.editTitle') : t('proxyForm.createTitle')}
-        </h1>
-      </div>
-
       {/* Basic Info */}
       <section className="mt-6">
         <h2 className="text-[13px] font-semibold mb-3 pb-2 border-b border-border">

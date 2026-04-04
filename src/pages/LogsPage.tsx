@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { ClipboardList } from 'lucide-react';
+import { ContentToolbar } from '../components/layout/ContentToolbar';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Select';
 import { Toggle } from '../components/ui/Toggle';
@@ -109,94 +110,90 @@ export function LogsPage() {
   };
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-[18px] font-semibold tracking-[-0.02em]">
-          {t('logs.title')}
-        </h1>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setTab('access')}
-            className={cn(
-              'px-2.5 py-[5px] border rounded-[20px] text-[11.5px] cursor-pointer',
-              tab === 'access'
-                ? 'bg-accent-light text-accent border-[#bfdbfe] dark:border-accent/40'
-                : 'bg-bg-secondary text-text-secondary border-border hover:bg-bg-hover',
-            )}
-          >
-            {t('logs.accessLog')}
-          </button>
-          <button
-            onClick={() => setTab('error')}
-            className={cn(
-              'px-2.5 py-[5px] border rounded-[20px] text-[11.5px] cursor-pointer',
-              tab === 'error'
-                ? 'bg-accent-light text-accent border-[#bfdbfe] dark:border-accent/40'
-                : 'bg-bg-secondary text-text-secondary border-border hover:bg-bg-hover',
-            )}
-          >
-            {t('logs.errorLog')}
-          </button>
-          {tab === 'access' && (
-            <Select
-              className="w-40"
-              value={ruleId}
-              onChange={(e) => setRuleId(e.target.value)}
-            >
-              <option value="">{t('monitor.allRules')}</option>
-              {proxies.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </Select>
+    <>
+      <ContentToolbar title={t('logs.title')}>
+        <button
+          onClick={() => setTab('access')}
+          className={cn(
+            'px-2.5 py-[5px] border rounded-[20px] text-[11.5px] cursor-pointer',
+            tab === 'access'
+              ? 'bg-accent-light text-accent border-[#bfdbfe] dark:border-accent/40'
+              : 'bg-bg-secondary text-text-secondary border-border hover:bg-bg-hover',
           )}
-          <div className="flex items-center gap-1.5">
-            <Toggle checked={autoRefresh} onChange={setAutoRefresh} />
-            <span className="text-[11.5px] text-text-secondary">{t('logs.autoRefresh')}</span>
-          </div>
-          <Button size="sm" onClick={() => setShowClear(true)}>
-            {t('logs.clear')}
-          </Button>
-        </div>
-      </div>
-
-      {totalLines > 0 && (
-        <div className="text-[11px] text-text-tertiary mb-2">
-          {t('logs.totalLines', { count: totalLines })}
-        </div>
-      )}
-
-      <div
-        ref={logContainerRef}
-        onScroll={handleScroll}
-        className="bg-[#1c1917] rounded-[var(--radius-md)] p-4 font-mono text-[11.5px] leading-[1.8] text-[#a8a29e] max-h-[calc(100vh-200px)] overflow-auto whitespace-nowrap"
-      >
-        {lines.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <ClipboardList className="w-8 h-8 text-[#57534e] mb-2" />
-            <p className="text-[12px] text-[#78716c]">{t('logs.emptyTitle')}</p>
-            <p className="text-[11px] text-[#57534e] mt-1">{t('logs.emptyDesc')}</p>
-          </div>
-        ) : (
-          <>
-            {lines.map((line, i) => (
-              <div key={i}>{renderLogLine(line)}</div>
+        >
+          {t('logs.accessLog')}
+        </button>
+        <button
+          onClick={() => setTab('error')}
+          className={cn(
+            'px-2.5 py-[5px] border rounded-[20px] text-[11.5px] cursor-pointer',
+            tab === 'error'
+              ? 'bg-accent-light text-accent border-[#bfdbfe] dark:border-accent/40'
+              : 'bg-bg-secondary text-text-secondary border-border hover:bg-bg-hover',
+          )}
+        >
+          {t('logs.errorLog')}
+        </button>
+        {tab === 'access' && (
+          <Select
+            className="w-40"
+            value={ruleId}
+            onChange={(e) => setRuleId(e.target.value)}
+          >
+            <option value="">{t('monitor.allRules')}</option>
+            {proxies.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
             ))}
-            <div className="text-[#78716c]">&#9612;</div>
-            <div ref={logEndRef} />
-          </>
+          </Select>
         )}
-      </div>
+        <div className="flex items-center gap-1.5">
+          <Toggle checked={autoRefresh} onChange={setAutoRefresh} />
+          <span className="text-[11.5px] text-text-secondary">{t('logs.autoRefresh')}</span>
+        </div>
+        <Button size="sm" onClick={() => setShowClear(true)}>
+          {t('logs.clear')}
+        </Button>
+      </ContentToolbar>
+      <div className="p-6 overflow-y-auto flex-1">
+        {totalLines > 0 && (
+          <div className="text-[11px] text-text-tertiary mb-2">
+            {t('logs.totalLines', { count: totalLines })}
+          </div>
+        )}
 
-      <ConfirmDialog
-        open={showClear}
-        onClose={() => setShowClear(false)}
-        onConfirm={handleClear}
-        title={t('logs.clear')}
-        message={t('logs.clearConfirm')}
-        danger
-      />
-    </div>
+        <div
+          ref={logContainerRef}
+          onScroll={handleScroll}
+          className="bg-[#1c1917] rounded-[var(--radius-md)] p-4 font-mono text-[11.5px] leading-[1.8] text-[#a8a29e] max-h-[calc(100vh-200px)] overflow-auto whitespace-nowrap"
+        >
+          {lines.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <ClipboardList className="w-8 h-8 text-[#57534e] mb-2" />
+              <p className="text-[12px] text-[#78716c]">{t('logs.emptyTitle')}</p>
+              <p className="text-[11px] text-[#57534e] mt-1">{t('logs.emptyDesc')}</p>
+            </div>
+          ) : (
+            <>
+              {lines.map((line, i) => (
+                <div key={i}>{renderLogLine(line)}</div>
+              ))}
+              <div className="text-[#78716c]">&#9612;</div>
+              <div ref={logEndRef} />
+            </>
+          )}
+        </div>
+
+        <ConfirmDialog
+          open={showClear}
+          onClose={() => setShowClear(false)}
+          onConfirm={handleClear}
+          title={t('logs.clear')}
+          message={t('logs.clearConfirm')}
+          danger
+        />
+      </div>
+    </>
   );
 }

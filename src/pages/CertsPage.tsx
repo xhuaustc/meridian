@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Upload, Lock, Trash2, Globe, Zap, CheckCircle, Loader2, AlertCircle, Download } from 'lucide-react';
+import { ContentToolbar } from '../components/layout/ContentToolbar';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Input } from '../components/ui/Input';
@@ -212,16 +213,15 @@ export function CertsPage() {
     DNS_PROVIDERS.find((dp) => dp.value === p)?.label || p;
 
   return (
-    <div>
-      {/* Tab bar */}
-      <div className="flex items-center gap-6 mb-5 border-b border-border">
+    <>
+      <ContentToolbar title={t('certs.title')}>
         <button
           onClick={() => setActiveTab('certs')}
           className={cn(
-            'pb-2.5 text-[13px] font-medium border-b-2 -mb-px transition-colors',
+            'px-2.5 py-[5px] border rounded-[20px] text-[11.5px] cursor-pointer',
             activeTab === 'certs'
-              ? 'border-accent text-text-primary'
-              : 'border-transparent text-text-tertiary hover:text-text-secondary',
+              ? 'bg-accent-light text-accent border-[#bfdbfe] dark:border-accent/40'
+              : 'bg-bg-secondary text-text-secondary border-border hover:bg-bg-hover',
           )}
         >
           {t('certs.title')}
@@ -229,16 +229,16 @@ export function CertsPage() {
         <button
           onClick={() => setActiveTab('dns')}
           className={cn(
-            'pb-2.5 text-[13px] font-medium border-b-2 -mb-px transition-colors',
+            'px-2.5 py-[5px] border rounded-[20px] text-[11.5px] cursor-pointer',
             activeTab === 'dns'
-              ? 'border-accent text-text-primary'
-              : 'border-transparent text-text-tertiary hover:text-text-secondary',
+              ? 'bg-accent-light text-accent border-[#bfdbfe] dark:border-accent/40'
+              : 'bg-bg-secondary text-text-secondary border-border hover:bg-bg-hover',
           )}
         >
           {t('dns.title')}
         </button>
-      </div>
-
+      </ContentToolbar>
+      <div className="p-6 overflow-y-auto flex-1">
       {activeTab === 'certs' ? (
         <>
           {/* Cert tab header */}
@@ -598,6 +598,7 @@ export function CertsPage() {
         confirmText={t('common.delete')}
         danger
       />
-    </div>
+      </div>
+    </>
   );
 }

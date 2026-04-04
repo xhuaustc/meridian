@@ -1,0 +1,105 @@
+<h2>macOS 侧边栏背景对比</h2>
+<p class="subtitle">三种毛玻璃透明度方案，点击选择你偏好的</p>
+
+<div class="cards" style="grid-template-columns:1fr 1fr 1fr;">
+
+  <!-- Option A: 当前偏灰 -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="display:grid;grid-template-columns:180px 1fr;height:320px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:12px;">
+        <div style="background:rgba(245,245,244,0.72);backdrop-filter:blur(40px);border-right:1px solid rgba(0,0,0,0.08);display:flex;flex-direction:column;">
+          <div style="height:48px;display:flex;align-items:center;padding:0 14px;gap:7px;">
+            <div style="display:flex;gap:7px;">
+              <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
+              <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
+              <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
+            </div>
+            <span style="color:#1c1917;font-weight:600;font-size:12px;margin-left:2px;">Meridian</span>
+          </div>
+          <div style="padding:6px 10px;flex:1;">
+            <div style="color:#78716c;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;padding:3px 6px;margin-bottom:3px;">代理管理</div>
+            <div style="background:rgba(37,99,235,0.12);color:#2563eb;padding:6px 8px;border-radius:5px;font-weight:500;display:flex;align-items:center;gap:6px;margin-bottom:2px;font-size:12px;">⊞ 仪表盘</div>
+            <div style="color:#44403c;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;margin-bottom:2px;">◎ 证书管理</div>
+            <div style="color:#44403c;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;">☰ 访问控制</div>
+            <div style="color:#78716c;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;padding:3px 6px;margin-top:10px;margin-bottom:3px;">系统</div>
+            <div style="color:#44403c;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;margin-bottom:2px;">◉ 监控</div>
+            <div style="color:#44403c;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;">≡ 日志</div>
+          </div>
+        </div>
+        <div style="background:#fafaf9;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 当前方案 (72% 不透明)</h3>
+      <p>rgba(245,245,244, 0.72) — 偏灰，遮挡感强</p>
+    </div>
+  </div>
+
+  <!-- Option B: 更通透 -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="display:grid;grid-template-columns:180px 1fr;height:320px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:12px;">
+        <div style="background:rgba(255,255,255,0.55);backdrop-filter:blur(40px);border-right:1px solid rgba(0,0,0,0.06);display:flex;flex-direction:column;">
+          <div style="height:48px;display:flex;align-items:center;padding:0 14px;gap:7px;">
+            <div style="display:flex;gap:7px;">
+              <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
+              <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
+              <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
+            </div>
+            <span style="color:#1c1917;font-weight:600;font-size:12px;margin-left:2px;">Meridian</span>
+          </div>
+          <div style="padding:6px 10px;flex:1;">
+            <div style="color:#78716c;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;padding:3px 6px;margin-bottom:3px;">代理管理</div>
+            <div style="background:rgba(37,99,235,0.10);color:#2563eb;padding:6px 8px;border-radius:5px;font-weight:500;display:flex;align-items:center;gap:6px;margin-bottom:2px;font-size:12px;">⊞ 仪表盘</div>
+            <div style="color:#44403c;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;margin-bottom:2px;">◎ 证书管理</div>
+            <div style="color:#44403c;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;">☰ 访问控制</div>
+            <div style="color:#78716c;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;padding:3px 6px;margin-top:10px;margin-bottom:3px;">系统</div>
+            <div style="color:#44403c;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;margin-bottom:2px;">◉ 监控</div>
+            <div style="color:#44403c;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;">≡ 日志</div>
+          </div>
+        </div>
+        <div style="background:#fafaf9;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 通透白玻璃 (55% 不透明)</h3>
+      <p>rgba(255,255,255, 0.55) — 轻盈通透，接近 Finder 侧边栏</p>
+    </div>
+  </div>
+
+  <!-- Option C: 近乎透明 -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="display:grid;grid-template-columns:180px 1fr;height:320px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:12px;">
+        <div style="background:rgba(255,255,255,0.35);backdrop-filter:blur(50px);border-right:1px solid rgba(0,0,0,0.05);display:flex;flex-direction:column;">
+          <div style="height:48px;display:flex;align-items:center;padding:0 14px;gap:7px;">
+            <div style="display:flex;gap:7px;">
+              <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
+              <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
+              <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
+            </div>
+            <span style="color:#1c1917;font-weight:600;font-size:12px;margin-left:2px;">Meridian</span>
+          </div>
+          <div style="padding:6px 10px;flex:1;">
+            <div style="color:#78716c;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;padding:3px 6px;margin-bottom:3px;">代理管理</div>
+            <div style="background:rgba(37,99,235,0.10);color:#2563eb;padding:6px 8px;border-radius:5px;font-weight:500;display:flex;align-items:center;gap:6px;margin-bottom:2px;font-size:12px;">⊞ 仪表盘</div>
+            <div style="color:#3a3632;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;margin-bottom:2px;">◎ 证书管理</div>
+            <div style="color:#3a3632;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;">☰ 访问控制</div>
+            <div style="color:#78716c;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;padding:3px 6px;margin-top:10px;margin-bottom:3px;">系统</div>
+            <div style="color:#3a3632;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;margin-bottom:2px;">◉ 监控</div>
+            <div style="color:#3a3632;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;">≡ 日志</div>
+          </div>
+        </div>
+        <div style="background:#fafaf9;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 高透玻璃 (35% 不透明)</h3>
+      <p>rgba(255,255,255, 0.35) — 极通透，类似 macOS Ventura 控制中心</p>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:16px;padding:12px 16px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;font-size:13px;color:#92400e;">
+  <strong>注意：</strong>实际效果由 macOS NSVisualEffectView 原生渲染，会根据窗口后方的内容实时模糊。此处 mockup 用 CSS backdrop-filter 近似模拟，实际效果更自然。
+</div>

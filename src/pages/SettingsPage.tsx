@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, Upload, Database } from 'lucide-react';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
+import { ContentToolbar } from '../components/layout/ContentToolbar';
 import { Button } from '../components/ui/Button';
 import { Toggle } from '../components/ui/Toggle';
 import { ConfirmDialog } from '../components/ui/Dialog';
@@ -99,10 +100,10 @@ export function SettingsPage() {
   ];
 
   return (
-    <div className="max-w-[560px]">
-      <h1 className="text-[18px] font-semibold tracking-[-0.02em] mb-6">
-        {t('settings.title')}
-      </h1>
+    <>
+      <ContentToolbar title={t('settings.title')} />
+      <div className="p-6 overflow-y-auto flex-1">
+      <div className="max-w-[560px]">
 
       {/* Language */}
       <section className="mb-8">
@@ -282,6 +283,8 @@ export function SettingsPage() {
         message={t('settings.importConfirm')}
         danger
       />
-    </div>
+      </div>
+      </div>
+    </>
   );
 }

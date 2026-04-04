@@ -1,0 +1,190 @@
+<h2>macOS 标题栏控件布局方案 — UI 专家评估</h2>
+<p class="subtitle">点击选择推荐方案，下方有详细分析</p>
+
+<div class="cards" style="grid-template-columns:1fr 1fr 1fr;">
+
+  <!-- Option A -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="height:360px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:12px;display:grid;grid-template-columns:190px 1fr;">
+        <!-- Sidebar -->
+        <div style="background:rgba(255,255,255,0.55);backdrop-filter:blur(40px);border-right:1px solid rgba(0,0,0,0.06);display:flex;flex-direction:column;">
+          <!-- Top: traffic lights + app name -->
+          <div style="height:48px;display:flex;align-items:center;padding:0 14px;gap:7px;">
+            <div style="display:flex;gap:7px;">
+              <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
+              <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
+              <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
+            </div>
+            <span style="color:#1c1917;font-weight:600;font-size:12px;margin-left:2px;">Meridian</span>
+          </div>
+          <!-- Nav -->
+          <div style="padding:6px 10px;flex:1;">
+            <div style="color:#78716c;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;padding:3px 6px;margin-bottom:3px;">代理管理</div>
+            <div style="background:rgba(37,99,235,0.10);color:#2563eb;padding:6px 8px;border-radius:5px;font-weight:500;display:flex;align-items:center;gap:6px;margin-bottom:2px;">⊞ 仪表盘</div>
+            <div style="color:#44403c;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;margin-bottom:2px;">◎ 证书</div>
+            <div style="color:#44403c;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;">☰ 访问控制</div>
+          </div>
+          <!-- Bottom: engine status -->
+          <div style="padding:10px;border-top:1px solid rgba(0,0,0,0.06);">
+            <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:rgba(22,163,74,0.08);border-radius:6px;margin-bottom:6px;">
+              <div style="width:6px;height:6px;border-radius:50%;background:#16a34a;"></div>
+              <span style="color:#16a34a;font-size:11px;font-weight:500;flex:1;">运行中</span>
+              <span style="color:#78716c;font-size:10px;">⟳</span>
+              <span style="color:#78716c;font-size:10px;">■</span>
+            </div>
+          </div>
+        </div>
+        <!-- Content -->
+        <div style="background:#fafaf9;display:flex;flex-direction:column;">
+          <div style="height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #e7e5e4;">
+            <span style="font-size:14px;font-weight:600;color:#1c1917;">仪表盘</span>
+            <div style="background:#2563eb;color:white;padding:4px 12px;border-radius:5px;font-size:11px;">+ 添加代理</div>
+          </div>
+          <div style="padding:12px 16px;flex:1;display:flex;align-items:center;justify-content:center;color:#a8a29e;font-size:11px;">内容区域</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 引擎控制在侧边栏底部</h3>
+      <p>顶部简洁，底部集中引擎状态与操控</p>
+    </div>
+  </div>
+
+  <!-- Option B -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="height:360px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:12px;display:grid;grid-template-columns:190px 1fr;">
+        <!-- Sidebar: pure nav -->
+        <div style="background:rgba(255,255,255,0.55);backdrop-filter:blur(40px);border-right:1px solid rgba(0,0,0,0.06);display:flex;flex-direction:column;">
+          <div style="height:48px;display:flex;align-items:center;padding:0 14px;gap:7px;">
+            <div style="display:flex;gap:7px;">
+              <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
+              <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
+              <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
+            </div>
+            <span style="color:#1c1917;font-weight:600;font-size:12px;margin-left:2px;">Meridian</span>
+          </div>
+          <div style="padding:6px 10px;flex:1;">
+            <div style="color:#78716c;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;padding:3px 6px;margin-bottom:3px;">代理管理</div>
+            <div style="background:rgba(37,99,235,0.10);color:#2563eb;padding:6px 8px;border-radius:5px;font-weight:500;display:flex;align-items:center;gap:6px;margin-bottom:2px;">⊞ 仪表盘</div>
+            <div style="color:#44403c;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;margin-bottom:2px;">◎ 证书</div>
+            <div style="color:#44403c;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;">☰ 访问控制</div>
+          </div>
+        </div>
+        <!-- Content with engine in toolbar -->
+        <div style="background:#fafaf9;display:flex;flex-direction:column;">
+          <div style="height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #e7e5e4;">
+            <span style="font-size:14px;font-weight:600;color:#1c1917;">仪表盘</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="display:flex;align-items:center;gap:5px;background:#dcfce7;color:#16a34a;padding:3px 9px;border-radius:12px;font-size:10px;font-weight:500;">
+                <div style="width:5px;height:5px;border-radius:50%;background:#16a34a;"></div>
+                运行中
+                <span style="color:#15803d;margin-left:2px;cursor:pointer;">⟳</span>
+                <span style="color:#15803d;cursor:pointer;">■</span>
+              </div>
+              <div style="background:#f5f5f4;border:1px solid #e7e5e4;color:#44403c;padding:4px 12px;border-radius:5px;font-size:11px;">+ 添加代理</div>
+            </div>
+          </div>
+          <div style="padding:12px 16px;flex:1;display:flex;align-items:center;justify-content:center;color:#a8a29e;font-size:11px;">内容区域</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 引擎状态在内容区顶栏</h3>
+      <p>侧边栏纯导航，引擎控制随内容区展示</p>
+    </div>
+  </div>
+
+  <!-- Option C -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden;">
+      <div style="height:360px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:12px;display:grid;grid-template-columns:190px 1fr;">
+        <!-- Sidebar with engine at top -->
+        <div style="background:rgba(255,255,255,0.55);backdrop-filter:blur(40px);border-right:1px solid rgba(0,0,0,0.06);display:flex;flex-direction:column;">
+          <div style="height:48px;display:flex;align-items:center;padding:0 14px;gap:7px;">
+            <div style="display:flex;gap:7px;">
+              <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
+              <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
+              <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;margin-left:2px;">
+              <span style="color:#1c1917;font-weight:600;font-size:12px;">Meridian</span>
+              <div style="width:6px;height:6px;border-radius:50%;background:#16a34a;margin-left:2px;"></div>
+            </div>
+          </div>
+          <!-- Engine controls row -->
+          <div style="padding:0 10px 6px;">
+            <div style="display:flex;align-items:center;gap:4px;">
+              <div style="flex:1;display:flex;align-items:center;gap:5px;background:rgba(22,163,74,0.08);padding:5px 8px;border-radius:5px;">
+                <span style="color:#16a34a;font-size:10px;font-weight:500;">运行中</span>
+              </div>
+              <div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:5px;background:rgba(0,0,0,0.04);color:#78716c;font-size:10px;cursor:pointer;">⟳</div>
+              <div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:5px;background:rgba(0,0,0,0.04);color:#78716c;font-size:10px;cursor:pointer;">■</div>
+            </div>
+          </div>
+          <!-- Nav -->
+          <div style="padding:6px 10px;flex:1;">
+            <div style="color:#78716c;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;padding:3px 6px;margin-bottom:3px;">代理管理</div>
+            <div style="background:rgba(37,99,235,0.10);color:#2563eb;padding:6px 8px;border-radius:5px;font-weight:500;display:flex;align-items:center;gap:6px;margin-bottom:2px;">⊞ 仪表盘</div>
+            <div style="color:#44403c;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;margin-bottom:2px;">◎ 证书</div>
+            <div style="color:#44403c;padding:6px 8px;border-radius:5px;display:flex;align-items:center;gap:6px;">☰ 访问控制</div>
+          </div>
+        </div>
+        <!-- Content -->
+        <div style="background:#fafaf9;display:flex;flex-direction:column;">
+          <div style="height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #e7e5e4;">
+            <span style="font-size:14px;font-weight:600;color:#1c1917;">仪表盘</span>
+            <div style="background:#2563eb;color:white;padding:4px 12px;border-radius:5px;font-size:11px;">+ 添加代理</div>
+          </div>
+          <div style="padding:12px 16px;flex:1;display:flex;align-items:center;justify-content:center;color:#a8a29e;font-size:11px;">内容区域</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 引擎控制在侧边栏顶部</h3>
+      <p>交通灯下方紧跟引擎状态和操控按钮</p>
+    </div>
+  </div>
+</div>
+
+<!-- UI Expert Analysis -->
+<div class="section" style="margin-top:24px;">
+  <h3>UI 专家评估</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+
+    <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+      <div style="background:#f8fafc;padding:10px 14px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#334155;">方案 A · 侧边栏底部</div>
+      <div style="padding:12px 14px;font-size:12px;line-height:1.7;">
+        <div style="color:#16a34a;font-weight:600;margin-bottom:4px;">优势</div>
+        <div style="color:#475569;">• 顶部极简，视觉呼吸感强<br>• 引擎状态固定可见，不随页面切换消失<br>• 符合 macOS 侧边栏底部放全局控制的惯例（如 Finder "标签"）</div>
+        <div style="color:#dc2626;font-weight:600;margin-top:10px;margin-bottom:4px;">劣势</div>
+        <div style="color:#475569;">• 引擎是高频操作，放底部视线距离远<br>• 如果导航项多，底部可能被挤压</div>
+      </div>
+    </div>
+
+    <div style="border:2px solid #2563eb;border-radius:8px;overflow:hidden;box-shadow:0 0 0 1px rgba(37,99,235,0.1);">
+      <div style="background:#eff6ff;padding:10px 14px;border-bottom:1px solid #bfdbfe;font-weight:600;color:#1d4ed8;">方案 B · 内容区顶栏 ⭐ 推荐</div>
+      <div style="padding:12px 14px;font-size:12px;line-height:1.7;">
+        <div style="color:#16a34a;font-weight:600;margin-bottom:4px;">优势</div>
+        <div style="color:#475569;">• 侧边栏职责单一（纯导航），认知负担最低<br>• 引擎状态在视线焦点区，操作便捷<br>• 跨平台一致性最好 — 三平台内容区布局相同<br>• 与 "添加代理" 等页面操作按钮同层，逻辑分组清晰</div>
+        <div style="color:#dc2626;font-weight:600;margin-top:10px;margin-bottom:4px;">劣势</div>
+        <div style="color:#475569;">• 顶栏元素稍多（标题 + 引擎 + 按钮）</div>
+      </div>
+    </div>
+
+    <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+      <div style="background:#f8fafc;padding:10px 14px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#334155;">方案 C · 侧边栏顶部</div>
+      <div style="padding:12px 14px;font-size:12px;line-height:1.7;">
+        <div style="color:#16a34a;font-weight:600;margin-bottom:4px;">优势</div>
+        <div style="color:#475569;">• 引擎状态一目了然，打开就看到<br>• 紧凑，不浪费空间</div>
+        <div style="color:#dc2626;font-weight:600;margin-top:10px;margin-bottom:4px;">劣势</div>
+        <div style="color:#475569;">• 交通灯区域拥挤，与 macOS HIG 规范冲突<br>• 跨平台差异大 — Windows/Linux 没有交通灯，顶部布局完全不同<br>• 侧边栏职责混乱（导航 + 全局控制）</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:13px;color:#1e40af;line-height:1.6;">
+    <strong>UI 专家结论：</strong>推荐 <strong>方案 B</strong>。核心理由是 <em>职责分离</em> — 侧边栏只做导航，内容区顶栏承载页面上下文（标题、操作、状态）。这不仅符合 macOS HIG 的导航侧边栏规范，更关键的是三个平台可以共享内容区布局代码，只有侧边栏和标题栏需要平台适配，大幅降低维护成本。同时，主题切换和语言切换属于低频设置操作，应移入设置页面，减少常驻 UI 的噪声。
+  </div>
+</div>

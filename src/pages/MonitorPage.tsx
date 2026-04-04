@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, BarChart3 } from 'lucide-react';
+import { ContentToolbar } from '../components/layout/ContentToolbar';
 import { Select } from '../components/ui/Select';
 import {
   AreaChart,
@@ -118,148 +119,97 @@ export function MonitorPage() {
   }));
 
   return (
-    <div className="p-5 overflow-y-auto h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-[18px] font-semibold tracking-[-0.02em]">
-          {t('monitor.title')}
-        </h1>
-        <div className="flex items-center gap-2">
-          {/* Rule filter */}
-          <Select
-            className="w-44"
-            value={ruleId ?? ''}
-            onChange={(e) => setRuleId(e.target.value || undefined)}
-          >
-            <option value="">{t('monitor.allRules')}</option>
-            {proxies.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </Select>
+    <>
+      <ContentToolbar title={t('monitor.title')}>
+        <Select
+          className="w-44"
+          value={ruleId ?? ''}
+          onChange={(e) => setRuleId(e.target.value || undefined)}
+        >
+          <option value="">{t('monitor.allRules')}</option>
+          {proxies.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </Select>
 
-          {/* Time range pills */}
-          <div className="flex bg-bg-secondary border border-border rounded-[var(--radius-sm)] overflow-hidden">
-            {timeRanges.map((tr) => (
-              <button
-                key={tr.key}
-                className={cn(
-                  'px-3 py-[6px] text-[12px] font-medium cursor-pointer transition-colors',
-                  timeRange === tr.key
-                    ? 'bg-accent text-white'
-                    : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
-                )}
-                onClick={() => setTimeRange(tr.key)}
-              >
-                {tr.label}
-              </button>
-            ))}
-          </div>
-
-          <Button variant="ghost" size="icon" onClick={handleRefresh}>
-            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-          </Button>
+        <div className="flex bg-bg-secondary border border-border rounded-[var(--radius-sm)] overflow-hidden">
+          {timeRanges.map((tr) => (
+            <button
+              key={tr.key}
+              className={cn(
+                'px-3 py-[6px] text-[12px] font-medium cursor-pointer transition-colors',
+                timeRange === tr.key
+                  ? 'bg-accent text-white'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
+              )}
+              onClick={() => setTimeRange(tr.key)}
+            >
+              {tr.label}
+            </button>
+          ))}
         </div>
-      </div>
 
-      {/* Empty state */}
-      {!hasData && !loading && (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-12 h-12 rounded-full bg-bg-hover flex items-center justify-center mb-4">
-            <BarChart3 className="w-6 h-6 text-text-tertiary" />
-          </div>
-          <div className="text-[14px] font-medium text-text-secondary mb-1">
-            {t('monitor.emptyTitle')}
-          </div>
-          <div className="text-[12px] text-text-tertiary">
-            {t('monitor.emptyDesc')}
-          </div>
-        </div>
-      )}
-
-      {/* Stats cards */}
-      {(hasData || loading) && (
-        <>
-          <div className="grid grid-cols-4 gap-3 mb-5">
-            <StatCard
-              label={t('monitor.totalRequests')}
-              value={summary ? formatNumber(summary.total_requests) : '-'}
-              color="text-accent"
-            />
-            <StatCard
-              label={t('monitor.errorRate')}
-              value={summary ? `${(summary.error_rate * 100).toFixed(1)}%` : '-'}
-              color={summary && summary.error_rate > 0.05 ? 'text-error' : 'text-success'}
-            />
-            <StatCard
-              label={t('monitor.avgLatency')}
-              value={summary ? `${summary.avg_latency_ms.toFixed(0)} ms` : '-'}
-              color="text-text-primary"
-            />
-            <StatCard
-              label={t('monitor.bandwidth')}
-              value={summary ? formatBytes(summary.total_bytes) : '-'}
-              color="text-text-primary"
-            />
-          </div>
-
-          {/* Request Volume — Area Chart */}
-          <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] p-4 mb-4">
-            <div className="text-[12px] font-medium text-text-secondary mb-3">
-              {t('monitor.requestVolume')}
+        <Button variant="ghost" size="icon" onClick={handleRefresh}>
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+        </Button>
+      </ContentToolbar>
+      <div className="p-6 overflow-y-auto flex-1">
+        {/* Empty state */}
+        {!hasData && !loading && (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="w-12 h-12 rounded-full bg-bg-hover flex items-center justify-center mb-4">
+              <BarChart3 className="w-6 h-6 text-text-tertiary" />
             </div>
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="fillReqs" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.2} />
-                    <stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }}
-                  interval="preserveStartEnd"
-                  tickLine={false}
-                  axisLine={{ stroke: 'var(--color-border)' }}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={40}
-                />
-                <Tooltip
-                  contentStyle={{
-                    fontSize: 11,
-                    background: 'var(--color-bg-secondary)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 6,
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="requests"
-                  name={t('monitor.requests')}
-                  stroke="var(--color-accent)"
-                  fill="url(#fillReqs)"
-                  strokeWidth={1.5}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            <div className="text-[14px] font-medium text-text-secondary mb-1">
+              {t('monitor.emptyTitle')}
+            </div>
+            <div className="text-[12px] text-text-tertiary">
+              {t('monitor.emptyDesc')}
+            </div>
           </div>
+        )}
 
-          {/* Bottom row: Latency + Status Distribution */}
-          <div className="grid grid-cols-2 gap-4">
-            {/* Response Time — Line Chart */}
-            <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] p-4">
+        {/* Stats cards */}
+        {(hasData || loading) && (
+          <>
+            <div className="grid grid-cols-4 gap-3 mb-5">
+              <StatCard
+                label={t('monitor.totalRequests')}
+                value={summary ? formatNumber(summary.total_requests) : '-'}
+                color="text-accent"
+              />
+              <StatCard
+                label={t('monitor.errorRate')}
+                value={summary ? `${(summary.error_rate * 100).toFixed(1)}%` : '-'}
+                color={summary && summary.error_rate > 0.05 ? 'text-error' : 'text-success'}
+              />
+              <StatCard
+                label={t('monitor.avgLatency')}
+                value={summary ? `${summary.avg_latency_ms.toFixed(0)} ms` : '-'}
+                color="text-text-primary"
+              />
+              <StatCard
+                label={t('monitor.bandwidth')}
+                value={summary ? formatBytes(summary.total_bytes) : '-'}
+                color="text-text-primary"
+              />
+            </div>
+
+            {/* Request Volume — Area Chart */}
+            <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] p-4 mb-4">
               <div className="text-[12px] font-medium text-text-secondary mb-3">
-                {t('monitor.responseTime')}
+                {t('monitor.requestVolume')}
               </div>
-              <ResponsiveContainer width="100%" height={180}>
-                <LineChart data={chartData}>
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="fillReqs" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.2} />
+                      <stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis
                     dataKey="label"
@@ -282,79 +232,123 @@ export function MonitorPage() {
                       borderRadius: 6,
                     }}
                   />
-                  <Line
+                  <Area
                     type="monotone"
-                    dataKey="avg_latency_ms"
-                    name={t('monitor.latency')}
-                    stroke="var(--color-warning)"
+                    dataKey="requests"
+                    name={t('monitor.requests')}
+                    stroke="var(--color-accent)"
+                    fill="url(#fillReqs)"
                     strokeWidth={1.5}
-                    dot={false}
                   />
-                </LineChart>
+                </AreaChart>
               </ResponsiveContainer>
             </div>
 
-            {/* Status Distribution — Pie Chart */}
-            <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] p-4">
-              <div className="text-[12px] font-medium text-text-secondary mb-3">
-                {t('monitor.statusDistribution')}
+            {/* Bottom row: Latency + Status Distribution */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Response Time — Line Chart */}
+              <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] p-4">
+                <div className="text-[12px] font-medium text-text-secondary mb-3">
+                  {t('monitor.responseTime')}
+                </div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }}
+                      interval="preserveStartEnd"
+                      tickLine={false}
+                      axisLine={{ stroke: 'var(--color-border)' }}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 10, fill: 'var(--color-text-tertiary)' }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={40}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        fontSize: 11,
+                        background: 'var(--color-bg-secondary)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 6,
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="avg_latency_ms"
+                      name={t('monitor.latency')}
+                      stroke="var(--color-warning)"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
-              {statusDist.length > 0 ? (
-                <div className="flex items-center gap-4">
-                  <ResponsiveContainer width="50%" height={180}>
-                    <PieChart>
-                      <Pie
-                        data={statusDist}
-                        dataKey="count"
-                        nameKey="group"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={40}
-                        outerRadius={70}
-                        strokeWidth={1}
-                        stroke="var(--color-bg-secondary)"
-                      >
-                        {statusDist.map((entry) => (
-                          <Cell key={entry.group} fill={PIE_COLORS[entry.group] ?? '#888'} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{
-                          fontSize: 11,
-                          background: 'var(--color-bg-secondary)',
-                          border: '1px solid var(--color-border)',
-                          borderRadius: 6,
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="flex flex-col gap-2">
-                    {statusDist.map((s) => {
-                      const total = statusDist.reduce((a, b) => a + b.count, 0);
-                      const pct = total > 0 ? ((s.count / total) * 100).toFixed(1) : '0';
-                      return (
-                        <div key={s.group} className="flex items-center gap-2 text-[12px]">
-                          <span
-                            className="w-2.5 h-2.5 rounded-full"
-                            style={{ background: PIE_COLORS[s.group] ?? '#888' }}
-                          />
-                          <span className="text-text-secondary">{s.group}</span>
-                          <span className="text-text-primary font-medium">{pct}%</span>
-                        </div>
-                      );
-                    })}
+
+              {/* Status Distribution — Pie Chart */}
+              <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] p-4">
+                <div className="text-[12px] font-medium text-text-secondary mb-3">
+                  {t('monitor.statusDistribution')}
+                </div>
+                {statusDist.length > 0 ? (
+                  <div className="flex items-center gap-4">
+                    <ResponsiveContainer width="50%" height={180}>
+                      <PieChart>
+                        <Pie
+                          data={statusDist}
+                          dataKey="count"
+                          nameKey="group"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={40}
+                          outerRadius={70}
+                          strokeWidth={1}
+                          stroke="var(--color-bg-secondary)"
+                        >
+                          {statusDist.map((entry) => (
+                            <Cell key={entry.group} fill={PIE_COLORS[entry.group] ?? '#888'} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            fontSize: 11,
+                            background: 'var(--color-bg-secondary)',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 6,
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="flex flex-col gap-2">
+                      {statusDist.map((s) => {
+                        const total = statusDist.reduce((a, b) => a + b.count, 0);
+                        const pct = total > 0 ? ((s.count / total) * 100).toFixed(1) : '0';
+                        return (
+                          <div key={s.group} className="flex items-center gap-2 text-[12px]">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full"
+                              style={{ background: PIE_COLORS[s.group] ?? '#888' }}
+                            />
+                            <span className="text-text-secondary">{s.group}</span>
+                            <span className="text-text-primary font-medium">{pct}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center h-[180px] text-[12px] text-text-tertiary">
-                  -
-                </div>
-              )}
+                ) : (
+                  <div className="flex items-center justify-center h-[180px] text-[12px] text-text-tertiary">
+                    -
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </>
-      )}
-    </div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
 

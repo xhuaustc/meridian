@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { ContentToolbar } from '../components/layout/ContentToolbar';
 import { ProxyForm } from '../components/proxy/ProxyForm';
 import { getProxy } from '../lib/api';
 import type { ProxyRule } from '../types';
 
 export function ProxyFormPage() {
+  const { t } = useTranslation('common');
   const { id } = useParams<{ id: string }>();
   const isNew = !id || id === 'new';
   const [rule, setRule] = useState<ProxyRule | undefined>(undefined);
@@ -20,13 +23,29 @@ export function ProxyFormPage() {
     }
   }, [id, isNew]);
 
+  const title = isNew
+    ? t('proxyForm.createTitle')
+    : t('proxyForm.editTitle');
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-text-tertiary text-[13px]">
-        Loading...
-      </div>
+      <>
+        <ContentToolbar title={title} />
+        <div className="p-6 overflow-y-auto flex-1">
+          <div className="flex items-center justify-center h-full text-text-tertiary text-[13px]">
+            Loading...
+          </div>
+        </div>
+      </>
     );
   }
 
-  return <ProxyForm key={id} rule={rule} />;
+  return (
+    <>
+      <ContentToolbar title={title} />
+      <div className="p-6 overflow-y-auto flex-1">
+        <ProxyForm key={id} rule={rule} />
+      </div>
+    </>
+  );
 }
