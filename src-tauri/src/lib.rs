@@ -344,15 +344,9 @@ pub fn run() {
             // Clean up any stale nginx process from a previous session
             nginx_manager::cleanup_stale_process(&app_data_dir);
 
-            // Auto-start engine if setting is enabled
-            let auto_start = {
-                let app_state = app.state::<AppState>();
-                app_state.get_conn().ok()
-                    .and_then(|db| store::settings_repo::get(&db, "auto_start_engine").ok().flatten())
-                    .map_or(false, |v| v == "true")
-            };
-            if auto_start {
-                info!("Auto-starting engine");
+            // Always generate nginx configs on startup so nginx.conf exists
+            // for status checks even when auto-start is disabled.
+            {
                 let app_state = app.state::<AppState>();
                 if let Ok(db) = app_state.get_conn() {
                     let rules = store::proxy_repo::list_enabled(&db).unwrap_or_default();
@@ -366,9 +360,21 @@ pub fn run() {
                     }
                     drop(db);
                     let _ = config_engine::generate_all_configs(&app_data_dir, &rules, &certs, &access_lists);
-                    let _ = nginx_manager::start(&app_data_dir);
                 }
+            }
+
+            // Auto-start engine if setting is enabled
+            let auto_start = {
+                let app_state = app.state::<AppState>();
+                app_state.get_conn().ok()
+                    .and_then(|db| store::settings_repo::get(&db, "auto_start_engine").ok().flatten())
+                    .map_or(false, |v| v == "true")
+            };
+            if auto_start {
+                info!("Auto-starting engine");
+                let _ = nginx_manager::start(&app_data_dir);
                 // Refresh tray status
+                let app_state = app.state::<AppState>();
                 let lang = get_language(&app_state);
                 sync_tray_menu(&app_data_dir, &items, &lang);
             }
