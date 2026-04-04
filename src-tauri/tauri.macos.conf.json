@@ -1,0 +1,11 @@
+{
+  "app": {
+    "windows": [
+      {
+        "titleBarStyle": "overlay",
+        "hiddenTitle": true,
+        "transparent": true
+      }
+    ]
+  }
+}
