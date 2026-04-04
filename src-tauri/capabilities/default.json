@@ -9,6 +9,8 @@
     "autostart:allow-enable",
     "autostart:allow-disable",
     "autostart:allow-is-enabled",
-    "dialog:default"
+    "dialog:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize"
   ]
 }

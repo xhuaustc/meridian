@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Play, Square, RotateCw } from 'lucide-react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEngineStore } from '../../stores/engine-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { cn } from '../../lib/utils';
@@ -33,14 +34,28 @@ export function ContentToolbar({ title, children }: ContentToolbarProps) {
 
   const isRunning = status?.status === 'running';
 
+  const isInteractive = (e: React.MouseEvent) =>
+    !!(e.target as HTMLElement).closest('button, input, select, a');
+
+  const handleDrag = (e: React.MouseEvent) => {
+    if (isInteractive(e)) return;
+    e.preventDefault();
+    getCurrentWindow().startDragging();
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    if (isInteractive(e)) return;
+    getCurrentWindow().toggleMaximize();
+  };
+
   return (
     <div
       className="h-12 flex items-center justify-between px-5 border-b border-border shrink-0"
-      data-tauri-drag-region
+      onMouseDown={handleDrag}
+      onDoubleClick={handleDoubleClick}
     >
       <h1
         className="text-[15px] font-semibold tracking-[-0.01em] text-text-primary"
-        data-tauri-drag-region
       >
         {title}
       </h1>

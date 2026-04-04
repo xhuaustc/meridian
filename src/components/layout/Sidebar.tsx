@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Settings,
 } from 'lucide-react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { cn } from '../../lib/utils';
 import { useProxyStore } from '../../stores/proxy-store';
 import { useCertStore } from '../../stores/cert-store';
@@ -60,7 +61,14 @@ export function Sidebar() {
   return (
     <div className="sidebar-nav bg-bg-sidebar border-r border-border py-3 px-2 flex flex-col gap-0.5 overflow-y-auto relative">
       {/* macOS drag region — covers the 52px top padding area for traffic lights */}
-      <div className="hidden [html[data-platform=macos]_&]:block absolute top-0 left-0 right-0 h-[52px]" data-tauri-drag-region />
+      <div
+        className="hidden [html[data-platform=macos]_&]:block absolute top-0 left-0 right-0 h-[52px]"
+        onMouseDown={(e) => {
+          e.preventDefault();
+          getCurrentWindow().startDragging();
+        }}
+        onDoubleClick={() => getCurrentWindow().toggleMaximize()}
+      />
       {sections.map((section, si) => (
         <div key={si}>
           <div
