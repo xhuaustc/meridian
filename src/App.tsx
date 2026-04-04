@@ -6,6 +6,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { ProxyFormPage } from "./pages/ProxyFormPage";
 import { CertsPage } from "./pages/CertsPage";
 import { AccessPage } from "./pages/AccessPage";
+import { HostsPage } from "./pages/HostsPage";
 import { LogsPage } from "./pages/LogsPage";
 import { MonitorPage } from "./pages/MonitorPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -50,6 +51,7 @@ function App() {
           <Route path="/proxy/:id" element={<ProxyFormPage />} />
           <Route path="/certs" element={<CertsPage />} />
           <Route path="/access" element={<AccessPage />} />
+          <Route path="/hosts" element={<HostsPage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

@@ -5,6 +5,7 @@ import {
   Activity,
   Lock,
   Shield,
+  Globe,
   ClipboardList,
   Settings,
 } from 'lucide-react';
@@ -13,6 +14,7 @@ import { cn } from '../../lib/utils';
 import { useProxyStore } from '../../stores/proxy-store';
 import { useCertStore } from '../../stores/cert-store';
 import { useAccessStore } from '../../stores/access-store';
+import { useHostsStore } from '../../stores/hosts-store';
 
 interface NavItem {
   icon: React.ElementType;
@@ -28,6 +30,7 @@ export function Sidebar() {
   const proxyCount = useProxyStore((s) => s.proxies.length);
   const certCount = useCertStore((s) => s.certificates.length);
   const accessCount = useAccessStore((s) => s.lists.length);
+  const hostsCount = useHostsStore((s) => s.entries.length);
 
   const sections: { titleKey: string; items: NavItem[] }[] = [
     {
@@ -42,6 +45,7 @@ export function Sidebar() {
       items: [
         { icon: Lock, labelKey: 'nav.certs', path: '/certs', count: certCount || undefined },
         { icon: Shield, labelKey: 'nav.access', path: '/access', count: accessCount || undefined },
+        { icon: Globe, labelKey: 'nav.hosts', path: '/hosts', count: hostsCount || undefined },
       ],
     },
     {
