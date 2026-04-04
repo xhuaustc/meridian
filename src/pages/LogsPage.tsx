@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
-import { RefreshCw, ClipboardList } from 'lucide-react';
+import { ClipboardList } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Select';
+import { Toggle } from '../components/ui/Toggle';
 import { ConfirmDialog } from '../components/ui/Dialog';
 import { useProxyStore } from '../stores/proxy-store';
 import { useToastStore } from '../stores/toast-store';
@@ -46,7 +47,7 @@ export function LogsPage() {
   const [ruleId, setRuleId] = useState<string>(() => searchParams.get('proxyId') || '');
   const [lines, setLines] = useState<string[]>([]);
   const [totalLines, setTotalLines] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const [showClear, setShowClear] = useState(false);
 
   useEffect(() => {
@@ -54,7 +55,6 @@ export function LogsPage() {
   }, [fetchProxies]);
 
   const fetchLogs = useCallback(async () => {
-    setLoading(true);
     try {
       const result =
         tab === 'access'
@@ -66,7 +66,6 @@ export function LogsPage() {
       setLines([]);
       setTotalLines(0);
     }
-    setLoading(false);
   }, [tab, ruleId]);
 
   useEffect(() => {
@@ -75,11 +74,12 @@ export function LogsPage() {
 
   // Auto-refresh every 2 seconds
   useEffect(() => {
+    if (!autoRefresh) return;
     const interval = setInterval(() => {
       fetchLogs();
     }, 2000);
     return () => clearInterval(interval);
-  }, [fetchLogs]);
+  }, [fetchLogs, autoRefresh]);
 
   // Auto-scroll only if user is near the bottom
   const logContainerRef = useRef<HTMLDivElement>(null);
@@ -151,10 +151,10 @@ export function LogsPage() {
               ))}
             </Select>
           )}
-          <Button size="sm" onClick={fetchLogs} disabled={loading}>
-            <RefreshCw className={cn('w-3 h-3', loading && 'animate-spin')} />
-            {t('logs.refresh')}
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Toggle checked={autoRefresh} onChange={setAutoRefresh} />
+            <span className="text-[11.5px] text-text-secondary">{t('logs.autoRefresh')}</span>
+          </div>
           <Button size="sm" onClick={() => setShowClear(true)}>
             {t('logs.clear')}
           </Button>

@@ -214,7 +214,7 @@
     "totalLines": "共 {{count}} 行",
     "emptyTitle": "暂无日志",
     "emptyDesc": "启动 Nginx 引擎后将在此显示日志",
-    "refresh": "刷新"
+    "autoRefresh": "自动刷新"
   },
   "settings": {
     "title": "设置",

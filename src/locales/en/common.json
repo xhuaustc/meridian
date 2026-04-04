@@ -214,7 +214,7 @@
     "totalLines": "{{count}} lines total",
     "emptyTitle": "No logs yet",
     "emptyDesc": "Logs will appear here once the Nginx engine is started",
-    "refresh": "Refresh"
+    "autoRefresh": "Auto-refresh"
   },
   "settings": {
     "title": "Settings",
