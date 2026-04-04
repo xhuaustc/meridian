@@ -33,6 +33,25 @@
     line-height: 1.5;
     overflow: hidden;
   }
+
+  /* Card elevation */
+  .card-elevated {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  }
+
+  /* Enhanced interaction feedback */
+  button {
+    transition: background-color 150ms ease, color 150ms ease, transform 100ms ease;
+  }
+
+  button:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  /* Table row hover */
+  tr {
+    transition: background-color 150ms ease;
+  }
 }
 
 /* Dark mode overrides */

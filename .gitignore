@@ -26,3 +26,6 @@ dist-ssr
 # Nginx sidecar binaries and build cache
 src-tauri/binaries/nginx-*
 .nginx-build
+
+# Superpowers brainstorm sessions
+.superpowers/

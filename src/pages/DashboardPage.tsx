@@ -241,7 +241,7 @@ export function DashboardPage() {
             </p>
           </div>
         ) : (
-          <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] overflow-hidden">
+          <div className="card-elevated bg-bg-secondary border border-border rounded-[var(--radius-md)] overflow-hidden">
             <table className="w-full border-collapse">
               <thead>
                 <tr>
