@@ -162,7 +162,7 @@ export function MonitorPage() {
             <div className="w-12 h-12 rounded-full bg-bg-hover flex items-center justify-center mb-4">
               <BarChart3 className="w-6 h-6 text-text-tertiary" />
             </div>
-            <div className="text-[14px] font-medium text-text-secondary mb-1">
+            <div className="text-[13px] font-medium text-text-secondary mb-1">
               {t('monitor.emptyTitle')}
             </div>
             <div className="text-[12px] text-text-tertiary">

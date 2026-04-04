@@ -117,7 +117,7 @@ export function LogsPage() {
         <button
           onClick={() => setTab('access')}
           className={cn(
-            'px-2.5 py-[5px] border rounded-[20px] text-[11.5px] cursor-pointer',
+            'px-2.5 py-[5px] border rounded-[20px] text-[12px] cursor-pointer',
             tab === 'access'
               ? 'bg-accent-light text-accent border-[#bfdbfe] dark:border-accent/40'
               : 'bg-bg-secondary text-text-secondary border-border hover:bg-bg-hover',
@@ -128,7 +128,7 @@ export function LogsPage() {
         <button
           onClick={() => setTab('error')}
           className={cn(
-            'px-2.5 py-[5px] border rounded-[20px] text-[11.5px] cursor-pointer',
+            'px-2.5 py-[5px] border rounded-[20px] text-[12px] cursor-pointer',
             tab === 'error'
               ? 'bg-accent-light text-accent border-[#bfdbfe] dark:border-accent/40'
               : 'bg-bg-secondary text-text-secondary border-border hover:bg-bg-hover',
@@ -152,7 +152,7 @@ export function LogsPage() {
         )}
         <div className="flex items-center gap-1.5">
           <Toggle checked={autoRefresh} onChange={setAutoRefresh} />
-          <span className="text-[11.5px] text-text-secondary">{t('logs.autoRefresh')}</span>
+          <span className="text-[12px] text-text-secondary">{t('logs.autoRefresh')}</span>
         </div>
         <Button size="sm" onClick={() => setShowClear(true)}>
           {t('logs.clear')}
@@ -168,7 +168,7 @@ export function LogsPage() {
         <div
           ref={logContainerRef}
           onScroll={handleScroll}
-          className="bg-[#1c1917] rounded-[var(--radius-md)] p-4 font-mono text-[11.5px] leading-[1.8] text-[#a8a29e] max-h-[calc(100vh-200px)] overflow-auto whitespace-nowrap"
+          className="bg-[#1c1917] rounded-[var(--radius-md)] p-4 font-mono text-[12px] leading-[1.8] text-[#a8a29e] max-h-[calc(100vh-200px)] overflow-auto whitespace-nowrap"
         >
           {lines.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">

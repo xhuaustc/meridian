@@ -106,7 +106,7 @@ function Select({ value, onChange, children, className, disabled }: SelectProps)
                 setOpen(false);
               }}
               className={cn(
-                'w-full px-2.5 py-[7px] text-left text-[12.5px] cursor-pointer transition-colors',
+                'w-full px-2.5 py-[7px] text-left text-[12px] cursor-pointer transition-colors',
                 opt.value === value
                   ? 'bg-accent-light text-accent font-medium'
                   : 'text-text-primary hover:bg-bg-hover',

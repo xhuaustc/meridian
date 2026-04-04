@@ -9,7 +9,7 @@ export function NotFoundPage() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6">
       <div className="text-[64px] font-bold text-text-tertiary mb-2">404</div>
-      <p className="text-[14px] text-text-secondary mb-6">{t('notFound.message')}</p>
+      <p className="text-[13px] text-text-secondary mb-6">{t('notFound.message')}</p>
       <Button variant="primary" onClick={() => navigate('/')}>
         {t('notFound.backHome')}
       </Button>

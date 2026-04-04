@@ -29,7 +29,7 @@ export function ToastContainer() {
           <div
             key={toast.id}
             className={cn(
-              'flex items-center gap-2 px-3 py-2.5 rounded-[var(--radius-md)] border shadow-[0_2px_8px_rgba(0,0,0,0.06)] text-[12.5px] min-w-[240px] max-w-[360px] animate-[slideIn_0.2s_ease-out]',
+              'flex items-center gap-2 px-3 py-2.5 rounded-[var(--radius-md)] border shadow-[0_2px_8px_rgba(0,0,0,0.06)] text-[12px] min-w-[240px] max-w-[360px] animate-[slideIn_0.2s_ease-out]',
               colorMap[toast.type],
             )}
           >

@@ -221,7 +221,7 @@ export function CertsPage() {
         <button
           onClick={() => setActiveTab('certs')}
           className={cn(
-            'px-2.5 py-[5px] border rounded-[20px] text-[11.5px] cursor-pointer',
+            'px-2.5 py-[5px] border rounded-[20px] text-[12px] cursor-pointer',
             activeTab === 'certs'
               ? 'bg-accent-light text-accent border-[#bfdbfe] dark:border-accent/40'
               : 'bg-bg-secondary text-text-secondary border-border hover:bg-bg-hover',
@@ -232,7 +232,7 @@ export function CertsPage() {
         <button
           onClick={() => setActiveTab('dns')}
           className={cn(
-            'px-2.5 py-[5px] border rounded-[20px] text-[11.5px] cursor-pointer',
+            'px-2.5 py-[5px] border rounded-[20px] text-[12px] cursor-pointer',
             activeTab === 'dns'
               ? 'bg-accent-light text-accent border-[#bfdbfe] dark:border-accent/40'
               : 'bg-bg-secondary text-text-secondary border-border hover:bg-bg-hover',
@@ -331,7 +331,7 @@ export function CertsPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="text-[11.5px] text-text-secondary flex flex-col gap-1">
+                    <div className="text-[12px] text-text-secondary flex flex-col gap-1">
                       {acmeDomainList.length > 1 && (
                         <span className="text-text-tertiary">
                           {t('certs.domains')}: {acmeDomainList.join(', ')}
@@ -390,7 +390,7 @@ export function CertsPage() {
             </div>
           ) : (
             <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] overflow-hidden">
-              <table className="w-full text-[12.5px]">
+              <table className="w-full text-[12px]">
                 <thead>
                   <tr className="border-b border-border text-text-tertiary text-left">
                     <th className="px-4 py-2.5 font-medium">{t('dns.colName')}</th>

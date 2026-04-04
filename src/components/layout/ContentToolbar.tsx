@@ -55,7 +55,7 @@ export function ContentToolbar({ title, children }: ContentToolbarProps) {
       onDoubleClick={handleDoubleClick}
     >
       <h1
-        className="text-[15px] font-semibold tracking-[-0.01em] text-text-primary"
+        className="text-[16px] font-semibold tracking-[-0.01em] text-text-primary"
       >
         {title}
       </h1>

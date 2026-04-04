@@ -218,7 +218,7 @@ export function SettingsPage() {
               type="number"
               min="1"
               max="365"
-              className="w-16 px-2 py-[5px] border border-border rounded-[var(--radius-sm)] text-[12.5px] bg-bg-primary text-text-primary text-center outline-none focus:border-accent"
+              className="w-16 px-2 py-[5px] border border-border rounded-[var(--radius-sm)] text-[12px] bg-bg-primary text-text-primary text-center outline-none focus:border-accent"
               value={logRetentionDays}
               onChange={(e) => setLogRetentionDays(e.target.value)}
               onBlur={async () => {

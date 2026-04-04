@@ -143,7 +143,7 @@ export function AccessPage() {
                     >
                       <Badge
                         variant={rule.action === 'allow' ? 'allow' : 'deny'}
-                        className="text-[10px] font-semibold px-1.5 py-0"
+                        className="text-[11px] font-semibold px-1.5 py-0"
                       >
                         {rule.action === 'allow'
                           ? t('access.actionAllow')

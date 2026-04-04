@@ -300,7 +300,7 @@ export function DashboardPage() {
           <div className="flex-1 relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-tertiary" />
             <input
-              className="w-full pl-8 pr-3 py-[7px] border border-border rounded-[var(--radius-sm)] text-[12.5px] bg-bg-secondary outline-none text-text-primary placeholder:text-text-tertiary focus:border-accent"
+              className="w-full pl-8 pr-3 py-[7px] border border-border rounded-[var(--radius-sm)] text-[12px] bg-bg-secondary outline-none text-text-primary placeholder:text-text-tertiary focus:border-accent"
               placeholder={t('dashboard.searchPlaceholder')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -311,7 +311,7 @@ export function DashboardPage() {
               key={f.value}
               onClick={() => setFilter(f.value)}
               className={cn(
-                'px-2.5 py-[5px] border rounded-[20px] text-[11.5px] cursor-pointer',
+                'px-2.5 py-[5px] border rounded-[20px] text-[12px] cursor-pointer',
                 filter === f.value
                   ? 'bg-accent-light text-accent border-[#bfdbfe] dark:border-accent/40'
                   : 'bg-bg-secondary text-text-secondary border-border hover:bg-bg-hover',
@@ -329,10 +329,10 @@ export function DashboardPage() {
             <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] py-12 px-8">
               <div className="text-center mb-8">
                 <BarChart3 className="w-12 h-12 text-accent mx-auto mb-3 opacity-80" />
-                <p className="text-[15px] font-semibold text-text-primary">
+                <p className="text-[16px] font-semibold text-text-primary">
                   {t('dashboard.onboardingTitle')}
                 </p>
-                <p className="text-[12.5px] text-text-tertiary mt-1.5 max-w-md mx-auto">
+                <p className="text-[12px] text-text-tertiary mt-1.5 max-w-md mx-auto">
                   {t('dashboard.onboardingDesc')}
                 </p>
               </div>
@@ -344,7 +344,7 @@ export function DashboardPage() {
                   <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
                     <Globe className="w-5 h-5 text-accent" />
                   </div>
-                  <span className="text-[12.5px] font-medium text-text-primary">{t('dashboard.onboardingStep1')}</span>
+                  <span className="text-[12px] font-medium text-text-primary">{t('dashboard.onboardingStep1')}</span>
                   <span className="text-[11px] text-text-tertiary text-center">{t('dashboard.onboardingStep1Desc')}</span>
                   <ArrowRight className="w-3.5 h-3.5 text-text-tertiary group-hover:text-accent transition-colors" />
                 </button>
@@ -355,7 +355,7 @@ export function DashboardPage() {
                   <div className="w-10 h-10 rounded-full bg-success/10 flex items-center justify-center">
                     <Shield className="w-5 h-5 text-success" />
                   </div>
-                  <span className="text-[12.5px] font-medium text-text-primary">{t('dashboard.onboardingStep2')}</span>
+                  <span className="text-[12px] font-medium text-text-primary">{t('dashboard.onboardingStep2')}</span>
                   <span className="text-[11px] text-text-tertiary text-center">{t('dashboard.onboardingStep2Desc')}</span>
                   <ArrowRight className="w-3.5 h-3.5 text-text-tertiary group-hover:text-accent transition-colors" />
                 </button>
@@ -366,7 +366,7 @@ export function DashboardPage() {
                   <div className="w-10 h-10 rounded-full bg-warning/10 flex items-center justify-center">
                     <ClipboardList className="w-5 h-5 text-warning" />
                   </div>
-                  <span className="text-[12.5px] font-medium text-text-primary">{t('dashboard.onboardingStep3')}</span>
+                  <span className="text-[12px] font-medium text-text-primary">{t('dashboard.onboardingStep3')}</span>
                   <span className="text-[11px] text-text-tertiary text-center">{t('dashboard.onboardingStep3Desc')}</span>
                   <ArrowRight className="w-3.5 h-3.5 text-text-tertiary group-hover:text-accent transition-colors" />
                 </button>
