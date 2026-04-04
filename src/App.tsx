@@ -11,6 +11,7 @@ import { MonitorPage } from "./pages/MonitorPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { useSettingsStore } from "./stores/settings-store";
 import { useTranslation } from "react-i18next";
+import { usePlatform } from "./hooks/usePlatform";
 
 function App() {
   const initialize = useSettingsStore((s) => s.initialize);
@@ -31,6 +32,13 @@ function App() {
   useEffect(() => {
     i18n.changeLanguage(language);
   }, [language, i18n]);
+
+  const platform = usePlatform();
+  useEffect(() => {
+    if (platform) {
+      document.documentElement.setAttribute('data-platform', platform);
+    }
+  }, [platform]);
 
   return (
     <>
