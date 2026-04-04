@@ -9,7 +9,7 @@ pub struct HttpLogEntry {
     pub status: u16,
     pub body_bytes_sent: u64,
     pub request_time: f64,
-    pub upstream_response_time: Option<f64>,
+    pub _upstream_response_time: Option<f64>,
 }
 
 /// Parsed stream (TCP/UDP) access log entry.
@@ -85,7 +85,7 @@ pub fn parse_http_line(line: &str) -> Option<HttpLogEntry> {
         status: raw.status,
         body_bytes_sent: raw.body_bytes_sent,
         request_time: raw.request_time,
-        upstream_response_time: urt,
+        _upstream_response_time: urt,
     })
 }
 
