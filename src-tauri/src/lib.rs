@@ -452,6 +452,14 @@ pub fn run() {
             commands::access::create_access_rule,
             commands::access::delete_access_rule,
             commands::access::reorder_access_rules,
+            // Host management commands
+            commands::hosts::list_hosts,
+            commands::hosts::create_host,
+            commands::hosts::update_host,
+            commands::hosts::delete_host,
+            commands::hosts::toggle_host,
+            commands::hosts::check_hostname_exists,
+            commands::hosts::sync_hosts_file,
             // Engine commands
             commands::engine::get_engine_status,
             commands::engine::start_engine,
