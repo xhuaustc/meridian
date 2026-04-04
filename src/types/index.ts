@@ -199,3 +199,19 @@ export interface ProxyMetrics {
   time_series: MetricBucket[];
   status_distribution: StatusGroup[];
 }
+
+export interface HostEntry {
+  id: string;
+  ip: string;
+  hostname: string;
+  comment: string | null;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateHostEntry {
+  ip: string;
+  hostname: string;
+  comment?: string | null;
+}

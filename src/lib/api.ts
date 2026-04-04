@@ -17,6 +17,8 @@ import type {
   LogChunk,
   ExportData,
   ProxyMetrics,
+  HostEntry,
+  CreateHostEntry,
 } from '../types';
 
 // --- Proxy ---
@@ -216,6 +218,32 @@ export const importData = (data: ExportData) =>
   invoke<void>('import_data', { data });
 
 export const backupDatabase = () => invoke<string>('backup_database');
+
+// --- Hosts ---
+export const listHosts = (keyword?: string) =>
+  invoke<HostEntry[]>('list_hosts', { keyword });
+
+export const createHost = (input: CreateHostEntry) =>
+  invoke<HostEntry>('create_host', { input });
+
+export const updateHost = (
+  id: string,
+  ip?: string,
+  hostname?: string,
+  comment?: string,
+) => invoke<HostEntry>('update_host', { id, ip, hostname, comment });
+
+export const deleteHost = (id: string) =>
+  invoke<void>('delete_host', { id });
+
+export const toggleHost = (id: string, enabled: boolean) =>
+  invoke<HostEntry>('toggle_host', { id, enabled });
+
+export const checkHostnameExists = (hostname: string, excludeId?: string) =>
+  invoke<HostEntry | null>('check_hostname_exists', { hostname, excludeId });
+
+export const syncHostsFile = () =>
+  invoke<void>('sync_hosts_file');
 
 // --- Tray ---
 export const syncTray = () => invoke<void>('sync_tray');
