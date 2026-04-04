@@ -397,6 +397,13 @@ pub fn run() {
                 info!("Applied macOS sidebar vibrancy effect");
             }
 
+            #[cfg(target_os = "windows")]
+            if let Some(window) = app.get_webview_window("main") {
+                use window_vibrancy::apply_mica;
+                let _ = apply_mica(&window, None);
+                info!("Applied Windows Mica material effect");
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {
