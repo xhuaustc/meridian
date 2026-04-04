@@ -75,25 +75,24 @@ pub fn write_hosts_elevated(content: &str) -> Result<(), AppError> {
 }
 
 fn write_hosts_macos(content: &str, path: &str) -> Result<(), AppError> {
+    // Write content to a temp file first, then use osascript to copy it with elevation.
+    // osascript's `do shell script` spawns a separate privileged shell whose stdin is NOT
+    // connected to osascript's stdin, so piping content directly would result in an empty file.
+    let tmp = std::env::temp_dir().join(format!("meridian-hosts-{}.tmp", std::process::id()));
+    std::fs::write(&tmp, content).map_err(AppError::Io)?;
+
     let script = format!(
-        r#"do shell script "cat > '{}'" with administrator privileges"#,
+        r#"do shell script "cp '{}' '{}'" with administrator privileges"#,
+        tmp.display(),
         path
     );
     let output = std::process::Command::new("osascript")
         .arg("-e")
         .arg(&script)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .and_then(|mut child| {
-            use std::io::Write;
-            if let Some(ref mut stdin) = child.stdin {
-                stdin.write_all(content.as_bytes())?;
-            }
-            child.wait_with_output()
-        })
-        .map_err(|e| AppError::Io(e))?;
+        .output()
+        .map_err(AppError::Io)?;
+
+    let _ = std::fs::remove_file(&tmp);
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -108,21 +107,20 @@ fn write_hosts_macos(content: &str, path: &str) -> Result<(), AppError> {
 }
 
 fn write_hosts_linux(content: &str, path: &str) -> Result<(), AppError> {
+    // Write content to a temp file first, then use pkexec to copy it with elevation.
+    // While pkexec typically forwards stdin, some polkit configurations close stdin
+    // before the elevated process runs. The temp file approach is more robust.
+    let tmp = std::env::temp_dir().join(format!("meridian-hosts-{}.tmp", std::process::id()));
+    std::fs::write(&tmp, content).map_err(AppError::Io)?;
+
     let output = std::process::Command::new("pkexec")
-        .arg("tee")
+        .arg("cp")
+        .arg(tmp.as_os_str())
         .arg(path)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .and_then(|mut child| {
-            use std::io::Write;
-            if let Some(ref mut stdin) = child.stdin {
-                stdin.write_all(content.as_bytes())?;
-            }
-            child.wait_with_output()
-        })
-        .map_err(|e| AppError::Io(e))?;
+        .output()
+        .map_err(AppError::Io)?;
+
+    let _ = std::fs::remove_file(&tmp);
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

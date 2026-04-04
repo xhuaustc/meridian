@@ -44,10 +44,11 @@ pub fn get_by_id(conn: &Connection, id: &str) -> Result<HostEntry, AppError> {
 
 pub fn find_by_hostname(conn: &Connection, hostname: &str) -> Result<Option<HostEntry>, AppError> {
     let mut stmt = conn.prepare("SELECT * FROM host_entries WHERE LOWER(hostname) = LOWER(?1)")?;
-    let result = stmt
-        .query_row(params![hostname], |row| row_to_host_entry(row))
-        .ok();
-    Ok(result)
+    match stmt.query_row(params![hostname], |row| row_to_host_entry(row)) {
+        Ok(entry) => Ok(Some(entry)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(AppError::Database(e)),
+    }
 }
 
 pub fn create(conn: &Connection, input: &CreateHostEntry) -> Result<HostEntry, AppError> {

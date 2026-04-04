@@ -251,7 +251,7 @@ fn validate_ip_address(ip: &str, original: &str) -> Result<(), AppError> {
     )))
 }
 
-pub fn validate_host_entry(ip: &str, hostname: &str) -> Result<(), AppError> {
+pub fn validate_host_ip(ip: &str) -> Result<(), AppError> {
     let ip = ip.trim();
     if ip.is_empty() {
         return Err(AppError::Validation("IP address must not be empty".to_string()));
@@ -259,7 +259,10 @@ pub fn validate_host_entry(ip: &str, hostname: &str) -> Result<(), AppError> {
     if ip.parse::<std::net::Ipv4Addr>().is_err() && ip.parse::<std::net::Ipv6Addr>().is_err() {
         return Err(AppError::Validation(format!("Invalid IP address '{}'", ip)));
     }
+    Ok(())
+}
 
+pub fn validate_hostname(hostname: &str) -> Result<(), AppError> {
     let hostname = hostname.trim();
     if hostname.is_empty() {
         return Err(AppError::Validation("Hostname must not be empty".to_string()));
@@ -277,7 +280,12 @@ pub fn validate_host_entry(ip: &str, hostname: &str) -> Result<(), AppError> {
     if !valid {
         return Err(AppError::Validation(format!("Invalid hostname format '{}'", hostname)));
     }
+    Ok(())
+}
 
+pub fn validate_host_entry(ip: &str, hostname: &str) -> Result<(), AppError> {
+    validate_host_ip(ip)?;
+    validate_hostname(hostname)?;
     Ok(())
 }
 

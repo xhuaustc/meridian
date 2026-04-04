@@ -52,16 +52,10 @@ pub async fn update_host(
     state: State<'_, AppState>,
 ) -> Result<HostEntry, AppError> {
     if let Some(ref ip) = ip {
-        if let Some(ref hn) = hostname {
-            validators::validate_host_entry(ip, hn)?;
-        } else {
-            validators::validate_host_entry(ip, "dummy.local")?;
-        }
+        validators::validate_host_ip(ip)?;
     }
     if let Some(ref hn) = hostname {
-        if ip.is_none() {
-            validators::validate_host_entry("127.0.0.1", hn)?;
-        }
+        validators::validate_hostname(hn)?;
     }
 
     let entry = {
