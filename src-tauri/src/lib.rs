@@ -4,6 +4,7 @@ mod commands;
 mod config_engine;
 mod dns_provider;
 mod error;
+mod hosts_manager;
 mod metrics;
 mod nginx_manager;
 mod store;
