@@ -58,7 +58,9 @@ export function Sidebar() {
   };
 
   return (
-    <div className="sidebar-nav bg-bg-sidebar border-r border-border py-3 px-2 flex flex-col gap-0.5 overflow-y-auto">
+    <div className="sidebar-nav bg-bg-sidebar border-r border-border py-3 px-2 flex flex-col gap-0.5 overflow-y-auto relative">
+      {/* macOS drag region — covers the 52px top padding area for traffic lights */}
+      <div className="hidden [html[data-platform=macos]_&]:block absolute top-0 left-0 right-0 h-[52px]" data-tauri-drag-region />
       {sections.map((section, si) => (
         <div key={si}>
           <div

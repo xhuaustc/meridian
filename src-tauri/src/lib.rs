@@ -400,8 +400,12 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             if let Some(window) = app.get_webview_window("main") {
                 use window_vibrancy::apply_mica;
-                let _ = apply_mica(&window, None);
-                info!("Applied Windows Mica material effect");
+                if apply_mica(&window, None).is_ok() {
+                    let _ = window.eval("document.documentElement.setAttribute('data-mica', '')");
+                    info!("Applied Windows Mica material effect");
+                } else {
+                    info!("Mica not available (pre-Win11), using solid sidebar fallback");
+                }
             }
 
             Ok(())

@@ -85,9 +85,13 @@
 [data-platform="windows"] {
   --color-accent: #0067c0;
   --color-accent-light: #e8f0fe;
-  --color-bg-sidebar: transparent;
+  --color-bg-sidebar: #f3f3f3;
   --radius-sm: 4px;
   --radius-md: 4px;
+}
+
+[data-platform="windows"][data-mica] {
+  --color-bg-sidebar: transparent;
 }
 
 [data-platform="linux"] {
@@ -107,6 +111,10 @@
 .dark[data-platform="windows"] {
   --color-accent: #4cc2ff;
   --color-accent-light: #1a3a5c;
+  --color-bg-sidebar: #2d2d2d;
+}
+
+.dark[data-platform="windows"][data-mica] {
   --color-bg-sidebar: transparent;
 }
 

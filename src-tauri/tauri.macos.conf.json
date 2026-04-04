@@ -2,7 +2,7 @@
   "app": {
     "windows": [
       {
-        "titleBarStyle": "overlay",
+        "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "transparent": true
       }
