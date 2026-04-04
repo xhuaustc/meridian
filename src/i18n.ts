@@ -3,13 +3,18 @@ import { initReactI18next } from 'react-i18next';
 import zh from './locales/zh/common.json';
 import en from './locales/en/common.json';
 
+function detectLanguage(): string {
+  const lang = navigator.language || '';
+  return lang.startsWith('zh') ? 'zh' : 'en';
+}
+
 i18n.use(initReactI18next).init({
   resources: {
     zh: { common: zh },
     en: { common: en },
   },
-  lng: 'zh',
-  fallbackLng: 'zh',
+  lng: detectLanguage(),
+  fallbackLng: 'en',
   ns: ['common'],
   defaultNS: 'common',
   interpolation: {

@@ -64,13 +64,22 @@ pub struct TrayMenuItems {
     quit: MenuItem<tauri::Wry>,
 }
 
-/// Read the language setting from the database, defaulting to "zh".
+/// Detect OS language: returns "zh" if any system locale starts with "zh", otherwise "en".
+fn detect_os_language() -> String {
+    std::env::var("LANG")
+        .or_else(|_| std::env::var("LC_ALL"))
+        .or_else(|_| std::env::var("LC_MESSAGES"))
+        .map(|v| if v.to_lowercase().starts_with("zh") { "zh".to_string() } else { "en".to_string() })
+        .unwrap_or_else(|_| "en".to_string())
+}
+
+/// Read the language setting from the database, defaulting to OS locale.
 fn get_language(state: &AppState) -> String {
     state
         .lock_db()
         .ok()
         .and_then(|db| store::settings_repo::get(&db, "language").ok().flatten())
-        .unwrap_or_else(|| "zh".to_string())
+        .unwrap_or_else(detect_os_language)
 }
 
 /// Update all tray menu items to reflect current engine status and language.
@@ -233,7 +242,7 @@ pub fn run() {
             TrayIconBuilder::new()
                 .icon(tray_icon)
                 .icon_as_template(true)
-                .tooltip("轻渡 · Meridian")
+                .tooltip(if lang == "zh" { "轻渡 · Meridian" } else { "Meridian" })
                 .show_menu_on_left_click(false)
                 .menu(&tray_menu)
                 .on_menu_event(move |app, event| {

@@ -13,6 +13,11 @@ interface SettingsStore {
   applyTheme: (theme: Theme) => void;
 }
 
+function detectLanguage(): string {
+  const lang = navigator.language || '';
+  return lang.startsWith('zh') ? 'zh' : 'en';
+}
+
 function applyThemeToDOM(theme: Theme) {
   const root = document.documentElement;
   if (theme === 'system') {
@@ -25,7 +30,7 @@ function applyThemeToDOM(theme: Theme) {
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   theme: 'light',
-  language: 'zh',
+  language: detectLanguage(),
   initialized: false,
   initialize: async () => {
     if (get().initialized) return;
@@ -35,7 +40,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         api.getSetting('language'),
       ]);
       const t = (theme as Theme) || 'light';
-      const l = language || 'zh';
+      const l = language || detectLanguage();
       set({ theme: t, language: l, initialized: true });
       applyThemeToDOM(t);
     } catch {
