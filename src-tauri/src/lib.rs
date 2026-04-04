@@ -187,6 +187,8 @@ pub fn run() {
                 .expect("Failed to create stream.d directory");
             std::fs::create_dir_all(nginx_dir.join("logs"))
                 .expect("Failed to create logs directory");
+            std::fs::create_dir_all(nginx_dir.join("temp"))
+                .expect("Failed to create temp directory");
             std::fs::create_dir_all(nginx_dir.join("certs"))
                 .expect("Failed to create certs directory");
 

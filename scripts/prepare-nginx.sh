@@ -115,8 +115,13 @@ echo ""
 echo "=== Configuring nginx ==="
 
 CONFIGURE_ARGS=(
-    --prefix=/etc/nginx
+    --prefix=.
     --sbin-path=nginx
+    --error-log-path=logs/error.log
+    --pid-path=nginx.pid
+    --http-client-body-temp-path=temp/client_body
+    --http-proxy-temp-path=temp/proxy
+    --http-log-path=logs/access.log
 
     # Statically link dependencies (source tree paths)
     --with-openssl="../openssl-${OPENSSL_VERSION}"

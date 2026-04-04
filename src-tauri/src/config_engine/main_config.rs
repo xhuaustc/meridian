@@ -16,6 +16,10 @@ events {{
 }}
 
 http {{
+    # Temp directories (override compile-time defaults)
+    client_body_temp_path "{dir}/nginx/temp/client_body";
+    proxy_temp_path "{dir}/nginx/temp/proxy";
+
     log_format meridian escape=json
       '{{"time":"$time_iso8601",'
       '"remote_addr":"$remote_addr",'
