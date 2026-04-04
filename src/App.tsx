@@ -7,6 +7,7 @@ import { ProxyFormPage } from "./pages/ProxyFormPage";
 import { CertsPage } from "./pages/CertsPage";
 import { AccessPage } from "./pages/AccessPage";
 import { LogsPage } from "./pages/LogsPage";
+import { MonitorPage } from "./pages/MonitorPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { useSettingsStore } from "./stores/settings-store";
 import { useTranslation } from "react-i18next";
@@ -36,6 +37,7 @@ function App() {
       <Routes>
         <Route element={<AppShell />}>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/monitor" element={<MonitorPage />} />
           <Route path="/proxy/new" element={<ProxyFormPage />} />
           <Route path="/proxy/:id" element={<ProxyFormPage />} />
           <Route path="/certs" element={<CertsPage />} />

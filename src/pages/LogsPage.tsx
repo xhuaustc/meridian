@@ -2,7 +2,9 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RefreshCw, ClipboardList } from 'lucide-react';
 import { Button } from '../components/ui/Button';
+import { Select } from '../components/ui/Select';
 import { ConfirmDialog } from '../components/ui/Dialog';
+import { useProxyStore } from '../stores/proxy-store';
 import { useToastStore } from '../stores/toast-store';
 import * as api from '../lib/api';
 import { cn } from '../lib/utils';
@@ -35,20 +37,26 @@ function renderLogLine(line: string) {
 export function LogsPage() {
   const { t } = useTranslation('common');
   const addToast = useToastStore((s) => s.addToast);
+  const { proxies, fetchProxies } = useProxyStore();
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const [tab, setTab] = useState<LogTab>('access');
+  const [ruleId, setRuleId] = useState<string>('');
   const [lines, setLines] = useState<string[]>([]);
   const [totalLines, setTotalLines] = useState(0);
   const [loading, setLoading] = useState(false);
   const [showClear, setShowClear] = useState(false);
+
+  useEffect(() => {
+    fetchProxies();
+  }, [fetchProxies]);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
       const result =
         tab === 'access'
-          ? await api.readAccessLog(500)
+          ? await api.readAccessLog(500, ruleId || undefined)
           : await api.readErrorLog(500);
       setLines(result.lines);
       setTotalLines(result.total_lines);
@@ -57,14 +65,34 @@ export function LogsPage() {
       setTotalLines(0);
     }
     setLoading(false);
-  }, [tab]);
+  }, [tab, ruleId]);
 
   useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
 
+  // Auto-refresh every 2 seconds
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const interval = setInterval(() => {
+      fetchLogs();
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [fetchLogs]);
+
+  // Auto-scroll only if user is near the bottom
+  const logContainerRef = useRef<HTMLDivElement>(null);
+  const isNearBottom = useRef(true);
+
+  const handleScroll = useCallback(() => {
+    const el = logContainerRef.current;
+    if (!el) return;
+    isNearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+  }, []);
+
+  useEffect(() => {
+    if (isNearBottom.current) {
+      logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [lines]);
 
   const handleClear = async () => {
@@ -107,6 +135,20 @@ export function LogsPage() {
           >
             {t('logs.errorLog')}
           </button>
+          {tab === 'access' && (
+            <Select
+              className="w-40"
+              value={ruleId}
+              onChange={(e) => setRuleId(e.target.value)}
+            >
+              <option value="">{t('monitor.allRules')}</option>
+              {proxies.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </Select>
+          )}
           <Button size="sm" onClick={fetchLogs} disabled={loading}>
             <RefreshCw className={cn('w-3 h-3', loading && 'animate-spin')} />
             {t('logs.refresh')}
@@ -123,7 +165,11 @@ export function LogsPage() {
         </div>
       )}
 
-      <div className="bg-[#1c1917] rounded-[var(--radius-md)] p-4 font-mono text-[11.5px] leading-[1.8] text-[#a8a29e] max-h-[calc(100vh-200px)] overflow-y-auto">
+      <div
+        ref={logContainerRef}
+        onScroll={handleScroll}
+        className="bg-[#1c1917] rounded-[var(--radius-md)] p-4 font-mono text-[11.5px] leading-[1.8] text-[#a8a29e] max-h-[calc(100vh-200px)] overflow-y-auto"
+      >
         {lines.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <ClipboardList className="w-8 h-8 text-[#57534e] mb-2" />

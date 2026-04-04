@@ -28,6 +28,7 @@ export const useEngineStore = create<EngineStore>((set, get) => ({
     try {
       await api.startEngine();
       await get().fetchStatus();
+      api.syncTray().catch(() => {});
     } finally {
       set({ loading: false });
     }
@@ -37,6 +38,7 @@ export const useEngineStore = create<EngineStore>((set, get) => ({
     try {
       await api.stopEngine();
       await get().fetchStatus();
+      api.syncTray().catch(() => {});
     } finally {
       set({ loading: false });
     }
@@ -46,6 +48,7 @@ export const useEngineStore = create<EngineStore>((set, get) => ({
     try {
       await api.reloadEngine();
       await get().fetchStatus();
+      api.syncTray().catch(() => {});
     } finally {
       set({ loading: false });
     }
@@ -55,6 +58,7 @@ export const useEngineStore = create<EngineStore>((set, get) => ({
     try {
       await api.restartEngine();
       await get().fetchStatus();
+      api.syncTray().catch(() => {});
     } finally {
       set({ loading: false });
     }

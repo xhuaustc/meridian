@@ -4,6 +4,8 @@
 | Date | Change | Reason |
 |------|--------|--------|
 | 2026-04-04 | Initial spec | Phase 2d |
+| 2026-04-04 | Add frontend form validation with field error highlighting | UX improvement |
+| 2026-04-04 | Add default listen port on proxy type selection (HTTP→80, HTTPS→443) | UX improvement |
 
 ## Feature Description
 
@@ -100,6 +102,8 @@
 7. **禁用规则**：不删除 DB 记录，仅在生成配置时跳过该规则
 8. **WebSocket 仅对 HTTP/HTTPS 类型有效**
 9. **Custom headers 仅对 HTTP/HTTPS 类型有效**
+10. **前端表单验证**：保存前检查所有必填字段（name, listen_port, upstream_host, upstream_port, domain for HTTP/HTTPS），不合格字段添加红色边框高亮，第一个错误以 toast 提示。同时执行异步端口冲突检查。
+11. **默认监听端口**：创建新规则时（非编辑），选择 HTTP 类型自动填入 80，选择 HTTPS 自动填入 443，TCP/UDP 留空
 
 ## Test Points
 
@@ -130,4 +134,8 @@
 
 | Spec Item | Code File(s) | Function / Class | Notes |
 |-----------|-------------|-----------------|-------|
-| (filled after Phase 4) | | | |
+| Proxy CRUD commands | `src-tauri/src/commands/proxy.rs` | `create_proxy`, `update_proxy`, `delete_proxy`, `toggle_proxy`, `list_proxies` | |
+| Port conflict check | `src-tauri/src/commands/engine.rs` | `check_port_conflict` | |
+| Input validation | `src-tauri/src/validators.rs` | `validate_create_proxy`, `validate_update_proxy` | |
+| Frontend proxy form | `src/components/proxy/ProxyForm.tsx` | `ProxyForm` | Field validation + default ports |
+| Frontend proxy store | `src/stores/proxy-store.ts` | `useProxyStore` | Zustand store |

@@ -4,9 +4,9 @@
 
 | Metric | Value |
 |--------|-------|
-| Active features | 7 (store, proxy, config_engine, nginx_mgr, cert, access, ui) |
-| Last trunk update | 2026-04-04 (Post-Gate 4 fixes + tray/icon) |
-| Open deferred items | 4 |
+| Active features | 8 (store, proxy, config_engine, nginx_mgr, cert, access, ui, monitoring) |
+| Last trunk update | 2026-04-04 (FEAT-001 + FEAT-002 merged to trunk) |
+| Open deferred items | 2 |
 
 ## Initial Build Progress
 
@@ -42,23 +42,37 @@
 2. ✅ Nginx stop/reload `-c` flag — pass custom config path so nginx finds correct pid file
 3. ✅ Nginx lifecycle logging — start/stop/reload/test events written to error.log with `[meridian]` tag
 4. ✅ Engine status label — removed "Nginx" prefix ("运行中"/"Running")
-5. ✅ System tray integration — full right-click menu: status display, start/stop/reload, new rule, show window, quit
+5. ✅ System tray integration — full right-click menu: status display, start/stop, add proxy, show window, quit
 6. ✅ Close-to-tray — window close hides to tray, app runs in background
 7. ✅ Tray menu i18n — menu text follows app language setting (zh/en)
 8. ✅ Tray menu state sync — items enabled/disabled based on engine status, refreshed after each action
 9. ✅ Custom app icon — blue gradient + flowing stream lines (SVG source, all sizes generated)
 
+## Merged Features
+1. ✅ FEAT-001: ACME DNS-01 Certificate Management — 4 DNS providers, wildcard/SAN certs, auto-renewal
+2. ✅ FEAT-002: Proxy Monitoring Dashboard — recharts-based, per-rule filtering, 3 chart types, nginx JSON log parsing
+3. ✅ Custom Select component — replaced native select with styled dropdown
+4. ✅ LogsPage enhancements — auto-refresh (2s), smart scroll, per-rule filter
+5. ✅ ProxyForm validation — field error highlighting, default ports (HTTP→80, HTTPS→443)
+6. ✅ Tray menu refinements — removed reload, renamed to "添加代理", left-click shows window only
+7. ✅ Log retention — configurable (1-365 days, default 7), startup cleanup
+8. ✅ Sidebar cleanup — removed duplicate "Add Proxy" entry
+
 ## Remaining Minor Items (deferred, non-blocking)
-- ACME/Let's Encrypt certificate auto-management
 - Real-time log tailing (Tauri event stream)
-- Pre-migration automatic database backup
 - Nginx path / data dir settings in Settings page
 
 ## Codebase Context
 
 - **Tech Stack:** Tauri v2 + React 18 + TypeScript + Tailwind CSS 4 + Rust + SQLite
-- **Source files:** 22 Rust modules + 27 TypeScript files
+- **Source files:** ~25 Rust modules + ~30 TypeScript files
 - **App Icon:** Custom SVG → PNG/ICO/ICNS (blue gradient + stream lines)
 - **System Tray:** Full menu with engine control, i18n, state sync
+- **Charting:** recharts (AreaChart, LineChart, PieChart) for monitoring
+- **Monitoring:** On-demand nginx JSON log parsing, no persistent metrics DB
+
+## Active Changes
+
+(None)
 
 ## Last Updated: 2026-04-04

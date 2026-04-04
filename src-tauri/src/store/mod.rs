@@ -1,5 +1,7 @@
 pub mod access_repo;
+pub mod acme_repo;
 pub mod cert_repo;
+pub mod dns_credential_repo;
 pub mod models;
 pub mod proxy_repo;
 pub mod settings_repo;
@@ -82,8 +84,53 @@ fn run_migrations(conn: &Connection) -> Result<(), AppError> {
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS dns_credentials (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            provider TEXT NOT NULL CHECK(provider IN ('cloudflare','alidns','dnspod','route53')),
+            credentials_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS acme_accounts (
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            account_key_pem TEXT NOT NULL,
+            ca_url TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
         ",
     )?;
+
+    // Migrations for existing tables (add columns if missing)
+    let cert_cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(certificates)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if !cert_cols.iter().any(|c| c == "dns_credential_id") {
+        conn.execute_batch(
+            "
+            ALTER TABLE certificates ADD COLUMN dns_credential_id TEXT REFERENCES dns_credentials(id);
+            ALTER TABLE certificates ADD COLUMN acme_account_id TEXT REFERENCES acme_accounts(id);
+            ALTER TABLE certificates ADD COLUMN acme_domains TEXT;
+            ALTER TABLE certificates ADD COLUMN last_renew_error TEXT;
+            ALTER TABLE certificates ADD COLUMN last_renew_at TEXT;
+            ",
+        )?;
+        info!("Migrated certificates table with ACME columns");
+    }
+
+    // Add status column (pending/ready/failed) — default 'ready' for existing rows
+    if !cert_cols.iter().any(|c| c == "status") {
+        conn.execute_batch(
+            "ALTER TABLE certificates ADD COLUMN status TEXT NOT NULL DEFAULT 'ready';",
+        )?;
+        info!("Migrated certificates table with status column");
+    }
 
     info!("Database migrations complete");
     Ok(())

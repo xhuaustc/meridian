@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use tauri::State;
 
 use crate::cert_manager;
@@ -84,6 +86,53 @@ pub async fn delete_certificate(
     // Clean up certificate files
     let _ = std::fs::remove_file(&cert.cert_path);
     let _ = std::fs::remove_file(&cert.key_path);
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn export_certificate(
+    id: String,
+    save_path: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let db = state.lock_db()?;
+    let cert = cert_repo::get_by_id(&db, &id)?;
+    drop(db);
+
+    if cert.status != "ready" {
+        return Err(AppError::Validation(
+            "Only ready certificates can be exported".to_string(),
+        ));
+    }
+
+    let cert_pem = std::fs::read(&cert.cert_path).map_err(|e| {
+        AppError::Certificate(format!("Failed to read certificate file: {}", e))
+    })?;
+    let key_pem = std::fs::read(&cert.key_path).map_err(|e| {
+        AppError::Certificate(format!("Failed to read private key file: {}", e))
+    })?;
+
+    // Sanitize domain for filename: replace * with _wildcard
+    let safe_domain = cert.domain.replace('*', "_wildcard");
+
+    let file = std::fs::File::create(&save_path)?;
+    let mut zip = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+
+    zip.start_file(format!("{}.cert.pem", safe_domain), options)
+        .map_err(|e| AppError::Certificate(format!("Failed to write zip: {}", e)))?;
+    zip.write_all(&cert_pem)
+        .map_err(|e| AppError::Certificate(format!("Failed to write zip: {}", e)))?;
+
+    zip.start_file(format!("{}.key.pem", safe_domain), options)
+        .map_err(|e| AppError::Certificate(format!("Failed to write zip: {}", e)))?;
+    zip.write_all(&key_pem)
+        .map_err(|e| AppError::Certificate(format!("Failed to write zip: {}", e)))?;
+
+    zip.finish()
+        .map_err(|e| AppError::Certificate(format!("Failed to finalize zip: {}", e)))?;
 
     Ok(())
 }

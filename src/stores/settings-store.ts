@@ -54,6 +54,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ language: lang });
     try {
       await api.setSetting('language', lang);
+      await api.syncTray();
     } catch { /* ignore */ }
   },
   applyTheme: applyThemeToDOM,

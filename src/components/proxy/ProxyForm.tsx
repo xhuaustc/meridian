@@ -65,6 +65,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
   const [websocket, setWebsocket] = useState(rule?.websocket ?? false);
   const [portWarning, setPortWarning] = useState('');
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchCertificates();
@@ -107,17 +108,49 @@ export function ProxyForm({ rule }: ProxyFormProps) {
     }
   }, [listenPort, formType, domain, pathPrefix, isEdit, isStream, rule?.id]);
 
+  const clearError = (field: string) => {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
   const handleSave = async () => {
-    if (!name.trim()) {
-      addToast('error', t('proxyForm.nameRequired'));
-      return;
+    const errs: Record<string, boolean> = {};
+    if (!name.trim()) errs.name = true;
+    if (!listenPort) errs.listenPort = true;
+    if (!upstreamHost.trim()) errs.upstreamHost = true;
+    if (!upstreamPort) errs.upstreamPort = true;
+    if (!isStream && !domain.trim()) errs.domain = true;
+
+    // Port conflict check
+    if (listenPort) {
+      try {
+        const { proxy_type } = fromFormType(formType);
+        const conflicts = await checkPortConflict(
+          parseInt(listenPort),
+          proxy_type,
+          isStream ? undefined : domain || undefined,
+          isStream ? undefined : pathPrefix || undefined,
+          isEdit ? rule?.id : undefined,
+        );
+        if (conflicts.length > 0) {
+          errs.listenPort = true;
+          setPortWarning(conflicts.map((c) => c.message).join('; '));
+        }
+      } catch { /* ignore */ }
     }
-    if (!listenPort) {
-      addToast('error', t('proxyForm.portRequired'));
-      return;
-    }
-    if (!upstreamHost || !upstreamPort) {
-      addToast('error', t('proxyForm.upstreamRequired'));
+
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      // Show first error as toast
+      if (errs.name) addToast('error', t('proxyForm.nameRequired'));
+      else if (errs.listenPort && !portWarning) addToast('error', t('proxyForm.portRequired'));
+      else if (errs.listenPort && portWarning) addToast('error', t('proxyForm.portConflictWarning', { message: portWarning }));
+      else if (errs.domain) addToast('error', t('proxyForm.domainHint'));
+      else if (errs.upstreamHost || errs.upstreamPort) addToast('error', t('proxyForm.upstreamRequired'));
       return;
     }
 
@@ -209,8 +242,9 @@ export function ProxyForm({ rule }: ProxyFormProps) {
           </label>
           <Input
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => { setName(e.target.value); clearError('name'); }}
             placeholder={t('proxyForm.ruleNamePlaceholder')}
+            className={errors.name ? 'border-error' : ''}
           />
         </div>
         <div className="mb-4">
@@ -222,7 +256,13 @@ export function ProxyForm({ rule }: ProxyFormProps) {
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => setFormType(opt.value)}
+                onClick={() => {
+                  setFormType(opt.value);
+                  if (!isEdit) {
+                    const defaults: Record<FormProxyType, string> = { http: '80', https: '443', tcp: '', udp: '' };
+                    setListenPort(defaults[opt.value]);
+                  }
+                }}
                 className={cn(
                   'flex-1 py-[7px] px-3 text-center text-[12px] cursor-pointer border-r border-border last:border-r-0',
                   formType === opt.value
@@ -250,8 +290,9 @@ export function ProxyForm({ rule }: ProxyFormProps) {
               </label>
               <Input
                 value={domain}
-                onChange={(e) => setDomain(e.target.value)}
+                onChange={(e) => { setDomain(e.target.value); clearError('domain'); }}
                 placeholder={t('proxyForm.domainPlaceholder')}
+                className={errors.domain ? 'border-error' : ''}
               />
               <p className="text-[11px] text-text-tertiary mt-1">
                 {t('proxyForm.domainHint')}
@@ -265,9 +306,10 @@ export function ProxyForm({ rule }: ProxyFormProps) {
             <Input
               type="number"
               value={listenPort}
-              onChange={(e) => setListenPort(e.target.value)}
+              onChange={(e) => { setListenPort(e.target.value); clearError('listenPort'); setPortWarning(''); }}
               onBlur={checkPortConflicts}
               placeholder={t('proxyForm.listenPortPlaceholder')}
+              className={errors.listenPort ? 'border-error' : ''}
             />
             {portWarning && (
               <p className="text-[11px] text-warning mt-1">
@@ -305,8 +347,9 @@ export function ProxyForm({ rule }: ProxyFormProps) {
             </label>
             <Input
               value={upstreamHost}
-              onChange={(e) => setUpstreamHost(e.target.value)}
+              onChange={(e) => { setUpstreamHost(e.target.value); clearError('upstreamHost'); }}
               placeholder={t('proxyForm.upstreamHostPlaceholder')}
+              className={errors.upstreamHost ? 'border-error' : ''}
             />
           </div>
           <div className="mb-4">
@@ -316,8 +359,9 @@ export function ProxyForm({ rule }: ProxyFormProps) {
             <Input
               type="number"
               value={upstreamPort}
-              onChange={(e) => setUpstreamPort(e.target.value)}
+              onChange={(e) => { setUpstreamPort(e.target.value); clearError('upstreamPort'); }}
               placeholder={t('proxyForm.upstreamPortPlaceholder')}
+              className={errors.upstreamPort ? 'border-error' : ''}
             />
           </div>
         </div>

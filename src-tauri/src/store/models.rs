@@ -70,6 +70,12 @@ pub struct Certificate {
     pub expires_at: String,
     pub auto_renew: bool,
     pub created_at: String,
+    pub dns_credential_id: Option<String>,
+    pub acme_account_id: Option<String>,
+    pub acme_domains: Option<String>,
+    pub last_renew_error: Option<String>,
+    pub last_renew_at: Option<String>,
+    pub status: String, // "pending", "ready", "failed"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +87,47 @@ pub struct CreateCertificate {
     pub source: String,
     pub expires_at: String,
     pub auto_renew: Option<bool>,
+    pub dns_credential_id: Option<String>,
+    pub acme_account_id: Option<String>,
+    pub acme_domains: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnsCredential {
+    pub id: String,
+    pub name: String,
+    pub provider: String,
+    pub credentials_json: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateDnsCredential {
+    pub name: String,
+    pub provider: String,
+    pub credentials_json: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcmeAccount {
+    pub id: String,
+    pub email: String,
+    pub account_key_pem: String,
+    pub ca_url: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RenewalStatus {
+    pub cert_id: String,
+    pub cert_name: String,
+    pub domains: Vec<String>,
+    pub expires_at: String,
+    pub auto_renew: bool,
+    pub last_renew_at: Option<String>,
+    pub last_renew_error: Option<String>,
+    pub next_renew_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

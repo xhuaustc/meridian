@@ -28,6 +28,12 @@ pub enum AppError {
 
     #[error("Validation error: {0}")]
     Validation(String),
+
+    #[error("DNS provider error: {0}")]
+    Dns(String),
+
+    #[error("ACME error: {0}")]
+    Acme(String),
 }
 
 impl From<AppError> for tauri::ipc::InvokeError {

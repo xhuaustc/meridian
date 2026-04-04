@@ -5,6 +5,9 @@
 |------|--------|--------|
 | 2026-04-04 | Initial spec | Phase 2d |
 | 2026-04-04 | Fix: quote all file paths in generated nginx configs for dirs with spaces | Bug fix |
+| 2026-04-04 | Add custom JSON log_format (meridian, stream_meridian) for monitoring metrics | FEAT-002 merge |
+| 2026-04-04 | Add per-rule access_log directives for metrics collection | FEAT-002 merge |
+| 2026-04-04 | Add data_dir parameter to config generation functions | FEAT-002 merge |
 
 ## Feature Description
 
@@ -20,9 +23,9 @@
 
 ### `generate_all_configs`
 - **Type:** Internal function
-- **Input:** `(rules: &[ProxyRule], certs: &[Certificate], access_lists: &[AccessListWithRules], settings: &NginxSettings)`
+- **Input:** `(data_dir: &Path, rules: &[ProxyRule], certs: &[Certificate], access_lists: &[AccessListWithRules])`
 - **Output:** `Result<ConfigBundle>` — `ConfigBundle { main_conf: String, http_confs: Vec<(String, String)>, stream_confs: Vec<(String, String)> }`
-- **Notes:** `http_confs` 的 key 是文件名（如 `port_80.conf`），value 是配置内容
+- **Notes:** `http_confs` 的 key 是文件名（如 `port_80.conf`），value 是配置内容。`data_dir` 用于生成日志文件路径。
 
 ### `validate_port_conflicts`
 - **Type:** Internal function
@@ -51,7 +54,11 @@
 2. **同域名多路径**：同域名 + 同端口的不同 path_prefix 规则合并到同一个 `server` block 的多个 `location` 块
 3. **Stream 规则独立文件**：每条 Stream 规则生成独立配置 `stream.d/stream_{id}.conf`
 4. **禁用规则不生成配置**：`enabled=0` 的规则跳过
-5. **主配置模板**：`nginx.conf` 包含 `worker_processes auto;` + `events {}` + `http { include conf.d/*.conf; }` + `stream { include stream.d/*.conf; }`
+5. **主配置模板**：`nginx.conf` 包含 `worker_processes auto;` + `events {}` + `http { log_format meridian ...; include conf.d/*.conf; }` + `stream { log_format stream_meridian ...; include stream.d/*.conf; }`
+5a. **HTTP JSON 日志格式 (`meridian`)**：在 `http` block 中定义 `log_format meridian escape=json`，字段包括 `time`, `remote_addr`, `method`, `uri`, `status`, `body_bytes_sent`, `request_time`, `upstream_response_time`, `host`
+5b. **Stream JSON 日志格式 (`stream_meridian`)**：在 `stream` block 中定义 `log_format stream_meridian`，字段包括 `time`, `remote_addr`, `protocol`, `status`, `bytes_sent`, `bytes_received`, `session_time`
+5c. **Per-rule access log**：每个 HTTP `location` block 和 Stream `server` block 添加 `access_log "{data_dir}/nginx/logs/rule_{id}.access.log" meridian;`（HTTP 用 meridian 格式，Stream 用 stream_meridian 格式）
+5d. **全局日志继承保持**：HTTP `location` block 中设置 `access_log` 会覆盖 `http` 级别继承，因此每个 location 需同时写入 per-rule 日志和全局 `access.log`（两条 `access_log` 指令）
 6. **TLS terminate 配置**：在 `server` block 中添加 `ssl_certificate` / `ssl_certificate_key` + `listen {port} ssl`
 7. **TLS passthrough 配置**：使用 `stream` block + `ssl_preread on` + `proxy_pass` 按 SNI 路由
 8. **WebSocket 配置**：添加 `proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade";`
@@ -156,6 +163,24 @@ location / {
 }
 ```
 
+### Per-Rule Logging (HTTP)
+```nginx
+location / {
+    access_log "/path/to/data/nginx/logs/rule_abc123.access.log" meridian;
+    access_log "/path/to/data/nginx/logs/access.log";
+    proxy_pass http://127.0.0.1:3000;
+}
+```
+
+### Per-Rule Logging (Stream)
+```nginx
+server {
+    listen 15432;
+    access_log "/path/to/data/nginx/logs/rule_abc123.access.log" stream_meridian;
+    proxy_pass 192.168.1.50:5432;
+}
+```
+
 ## Test Points
 
 | TP-ID | Category | Input | Expected Output | Notes |
@@ -184,4 +209,9 @@ location / {
 
 | Spec Item | Code File(s) | Function / Class | Notes |
 |-----------|-------------|-----------------|-------|
-| (filled after Phase 4) | | | |
+| Main config generation | `src-tauri/src/config_engine/main_config.rs` | `generate_main_config()` | Includes meridian + stream_meridian log_format |
+| HTTP config generation | `src-tauri/src/config_engine/http_config.rs` | `generate_server_block()` | Per-rule + global access_log in each location |
+| Stream config generation | `src-tauri/src/config_engine/stream_config.rs` | `generate_stream_block()` | Per-rule access_log with stream_meridian format |
+| Config orchestration | `src-tauri/src/config_engine/mod.rs` | `generate_all_configs()` | Passes data_dir to sub-generators |
+| Port conflict detection | `src-tauri/src/config_engine/mod.rs` | `validate_port_conflicts()` | |
+| Config write + rollback | `src-tauri/src/config_engine/mod.rs` | `write_configs()`, `restore_previous_configs()` | |

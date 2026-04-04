@@ -87,6 +87,9 @@ pub fn generate_self_signed(
         source: "self_signed".to_string(),
         expires_at,
         auto_renew: Some(false),
+        dns_credential_id: None,
+        acme_account_id: None,
+        acme_domains: None,
     })
 }
 
@@ -147,5 +150,8 @@ pub fn import_certificate(
         source: "upload".to_string(),
         expires_at: expires_at.to_string(),
         auto_renew: Some(false),
+        dns_credential_id: None,
+        acme_account_id: None,
+        acme_domains: None,
     })
 }

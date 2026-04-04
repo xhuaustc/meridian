@@ -61,7 +61,7 @@ pub fn generate_all_configs(
 
     // Generate HTTP config files
     for ((port, domain), group_rules) in &http_groups {
-        let config = http_config::generate_server_block(group_rules, certs, access_lists);
+        let config = http_config::generate_server_block(group_rules, certs, access_lists, data_dir);
         let sanitized_domain = if domain.is_empty() {
             "default".to_string()
         } else {
@@ -74,7 +74,7 @@ pub fn generate_all_configs(
 
     // Generate stream config files
     for rule in &stream_rules {
-        let config = stream_config::generate_stream_block(rule, certs);
+        let config = stream_config::generate_stream_block(rule, certs, data_dir);
         let filename = format!("stream_{}_{}.conf", rule.listen_port, rule.proxy_type);
         fs::write(stream_d.join(&filename), config)?;
         info!("Wrote stream config: {}", filename);

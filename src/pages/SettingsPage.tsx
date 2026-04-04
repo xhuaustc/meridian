@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, Upload, Database } from 'lucide-react';
+import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { Button } from '../components/ui/Button';
+import { Toggle } from '../components/ui/Toggle';
 import { ConfirmDialog } from '../components/ui/Dialog';
 import { useSettingsStore } from '../stores/settings-store';
 import { useToastStore } from '../stores/toast-store';
@@ -15,6 +17,20 @@ export function SettingsPage() {
   const addToast = useToastStore((s) => s.addToast);
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   const [importPayload, setImportPayload] = useState<ExportData | null>(null);
+  const [autoStartEngine, setAutoStartEngine] = useState(false);
+  const [launchAtLogin, setLaunchAtLogin] = useState(false);
+  const [logRetentionDays, setLogRetentionDays] = useState('7');
+
+  useEffect(() => {
+    // Load auto-start engine setting
+    api.getSetting('auto_start_engine').then((v) => setAutoStartEngine(v === 'true'));
+    // Load launch-at-login state
+    isEnabled().then(setLaunchAtLogin).catch(() => {});
+    // Load log retention days
+    api.getSetting('log_retention_days').then((v) => {
+      if (v) setLogRetentionDays(v);
+    });
+  }, []);
 
   const handleExport = async () => {
     try {
@@ -131,6 +147,72 @@ export function SettingsPage() {
               {t(th.labelKey)}
             </button>
           ))}
+        </div>
+      </section>
+
+      {/* Startup */}
+      <section className="mb-8">
+        <h2 className="text-[13px] font-semibold mb-3 pb-2 border-b border-border">
+          {t('settings.startup')}
+        </h2>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3">
+            <div>
+              <div className="text-[13px] font-medium">{t('settings.autoStartEngine')}</div>
+              <div className="text-[11px] text-text-tertiary mt-0.5">{t('settings.autoStartEngineDesc')}</div>
+            </div>
+            <Toggle
+              checked={autoStartEngine}
+              onChange={async (v) => {
+                setAutoStartEngine(v);
+                await api.setSetting('auto_start_engine', v ? 'true' : 'false');
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-between bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3">
+            <div>
+              <div className="text-[13px] font-medium">{t('settings.launchAtLogin')}</div>
+              <div className="text-[11px] text-text-tertiary mt-0.5">{t('settings.launchAtLoginDesc')}</div>
+            </div>
+            <Toggle
+              checked={launchAtLogin}
+              onChange={async (v) => {
+                try {
+                  if (v) { await enable(); } else { await disable(); }
+                  setLaunchAtLogin(v);
+                } catch (e) { addToast('error', String(e)); }
+              }}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Log Retention */}
+      <section className="mb-8">
+        <h2 className="text-[13px] font-semibold mb-3 pb-2 border-b border-border">
+          {t('settings.logRetention')}
+        </h2>
+        <div className="flex items-center justify-between bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3">
+          <div>
+            <div className="text-[13px] font-medium">{t('settings.logRetentionDays')}</div>
+            <div className="text-[11px] text-text-tertiary mt-0.5">{t('settings.logRetentionDaysDesc')}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min="1"
+              max="365"
+              className="w-16 px-2 py-[5px] border border-border rounded-[var(--radius-sm)] text-[12.5px] bg-bg-primary text-text-primary text-center outline-none focus:border-accent"
+              value={logRetentionDays}
+              onChange={(e) => setLogRetentionDays(e.target.value)}
+              onBlur={async () => {
+                const days = Math.max(1, Math.min(365, parseInt(logRetentionDays) || 7));
+                setLogRetentionDays(String(days));
+                await api.setSetting('log_retention_days', String(days));
+              }}
+            />
+            <span className="text-[12px] text-text-secondary">{t('settings.logRetentionUnit')}</span>
+          </div>
         </div>
       </section>
 

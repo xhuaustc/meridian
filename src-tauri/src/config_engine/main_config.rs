@@ -14,6 +14,17 @@ events {{
 }}
 
 http {{
+    log_format meridian escape=json
+      '{{"time":"$time_iso8601",'
+      '"remote_addr":"$remote_addr",'
+      '"method":"$request_method",'
+      '"uri":"$request_uri",'
+      '"status":$status,'
+      '"body_bytes_sent":$body_bytes_sent,'
+      '"request_time":$request_time,'
+      '"upstream_response_time":"$upstream_response_time",'
+      '"host":"$host"}}';
+
     access_log "{dir}/nginx/logs/access.log";
 
     sendfile on;
@@ -30,6 +41,15 @@ http {{
 }}
 
 stream {{
+    log_format stream_meridian
+      '{{"time":"$time_iso8601",'
+      '"remote_addr":"$remote_addr",'
+      '"protocol":"$protocol",'
+      '"status":$status,'
+      '"bytes_sent":$bytes_sent,'
+      '"bytes_received":$bytes_received,'
+      '"session_time":"$session_time"}}';
+
     include "{dir}/nginx/stream.d/*.conf";
 }}
 "#,

@@ -5,6 +5,9 @@ import type {
   CreateProxyRule,
   UpdateProxyRule,
   Certificate,
+  DnsCredential,
+  RenewalStatus,
+  TestResult,
   AccessList,
   AccessListDetail,
   AccessRule,
@@ -13,6 +16,7 @@ import type {
   NginxStatus,
   LogChunk,
   ExportData,
+  ProxyMetrics,
 } from '../types';
 
 // --- Proxy ---
@@ -75,8 +79,45 @@ export const importCertificate = (
 export const deleteCertificate = (id: string) =>
   invoke<void>('delete_certificate', { id });
 
+export const exportCertificate = (id: string, savePath: string) =>
+  invoke<void>('export_certificate', { id, savePath });
+
 export const checkExpiringCerts = (withinDays?: number) =>
   invoke<Certificate[]>('check_expiring_certs', { withinDays });
+
+// --- DNS Credentials ---
+export const listDnsCredentials = () =>
+  invoke<DnsCredential[]>('list_dns_credentials');
+
+export const createDnsCredential = (
+  name: string,
+  provider: string,
+  credentialsJson: string,
+) => invoke<DnsCredential>('create_dns_credential', { name, provider, credentialsJson });
+
+export const updateDnsCredential = (
+  id: string,
+  name?: string,
+  credentialsJson?: string,
+) => invoke<DnsCredential>('update_dns_credential', { id, name, credentialsJson });
+
+export const deleteDnsCredential = (id: string) =>
+  invoke<void>('delete_dns_credential', { id });
+
+export const testDnsCredential = (id: string) =>
+  invoke<TestResult>('test_dns_credential', { id });
+
+// --- ACME ---
+export const requestAcmeCert = (
+  domains: string[],
+  dnsCredentialId: string,
+  email: string,
+  autoRenew?: boolean,
+) =>
+  invoke<Certificate>('request_acme_cert', { domains, dnsCredentialId, email, autoRenew });
+
+export const getAcmeRenewalStatus = () =>
+  invoke<RenewalStatus[]>('get_acme_renewal_status');
 
 // --- Access Lists ---
 export const listAccessLists = () => invoke<AccessListDetail[]>('list_access_lists');
@@ -148,13 +189,17 @@ export const checkPortConflict = (
   });
 
 // --- Logs ---
-export const readAccessLog = (tailLines?: number) =>
-  invoke<LogChunk>('read_access_log', { tailLines });
+export const readAccessLog = (tailLines?: number, ruleId?: string) =>
+  invoke<LogChunk>('read_access_log', { tailLines, ruleId });
 
 export const readErrorLog = (tailLines?: number) =>
   invoke<LogChunk>('read_error_log', { tailLines });
 
 export const clearLogs = () => invoke<void>('clear_logs');
+
+// --- Metrics ---
+export const getProxyMetrics = (ruleId?: string, timeRange: string = '1h') =>
+  invoke<ProxyMetrics>('get_proxy_metrics', { ruleId, timeRange });
 
 // --- Settings ---
 export const getSetting = (key: string) =>
@@ -171,3 +216,6 @@ export const importData = (data: ExportData) =>
   invoke<void>('import_data', { data });
 
 export const backupDatabase = () => invoke<string>('backup_database');
+
+// --- Tray ---
+export const syncTray = () => invoke<void>('sync_tray');

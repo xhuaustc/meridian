@@ -45,9 +45,7 @@ export function Titlebar() {
       data-tauri-drag-region
     >
       <div className="flex items-center gap-2.5" data-tauri-drag-region>
-        <div className="w-6 h-6 bg-gradient-to-br from-accent to-[#1d4ed8] rounded-[6px] flex items-center justify-center text-white text-[12px] font-bold">
-          渡
-        </div>
+        <img src="/app-icon.png" alt="Meridian" className="w-6 h-6 rounded-[6px]" />
         <span className="text-[13px] font-semibold tracking-[-0.01em]" data-tauri-drag-region>
           {t('app.name')}
         </span>

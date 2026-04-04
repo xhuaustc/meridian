@@ -59,6 +59,8 @@ export interface UpdateProxyRule {
   sort_order?: number;
 }
 
+export type CertStatus = 'pending' | 'ready' | 'failed';
+
 export interface Certificate {
   id: string;
   name: string;
@@ -69,6 +71,39 @@ export interface Certificate {
   expires_at: string;
   auto_renew: boolean;
   created_at: string;
+  dns_credential_id: string | null;
+  acme_account_id: string | null;
+  acme_domains: string | null;
+  last_renew_error: string | null;
+  last_renew_at: string | null;
+  status: CertStatus;
+}
+
+export type DnsProvider = 'cloudflare' | 'alidns' | 'dnspod' | 'route53';
+
+export interface DnsCredential {
+  id: string;
+  name: string;
+  provider: DnsProvider;
+  credentials_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RenewalStatus {
+  cert_id: string;
+  cert_name: string;
+  domains: string[];
+  expires_at: string;
+  auto_renew: boolean;
+  last_renew_at: string | null;
+  last_renew_error: string | null;
+  next_renew_at: string;
+}
+
+export interface TestResult {
+  success: boolean;
+  message: string;
 }
 
 export interface AccessList {
@@ -135,4 +170,32 @@ export interface ExportData {
   access_lists: AccessList[];
   access_rules: AccessRule[];
   settings: AppSetting[];
+}
+
+// Monitoring metrics
+export interface MetricSummary {
+  total_requests: number;
+  error_count: number;
+  error_rate: number;
+  avg_latency_ms: number;
+  total_bytes: number;
+}
+
+export interface MetricBucket {
+  timestamp: string;
+  requests: number;
+  errors: number;
+  avg_latency_ms: number;
+  bytes: number;
+}
+
+export interface StatusGroup {
+  group: string;
+  count: number;
+}
+
+export interface ProxyMetrics {
+  summary: MetricSummary;
+  time_series: MetricBucket[];
+  status_distribution: StatusGroup[];
 }

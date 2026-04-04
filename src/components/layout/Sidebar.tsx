@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3,
-  Plus,
+  Activity,
   Lock,
   Shield,
   ClipboardList,
@@ -33,7 +33,7 @@ export function Sidebar() {
       titleKey: 'nav.proxyManagement',
       items: [
         { icon: BarChart3, labelKey: 'nav.dashboard', path: '/', count: proxyCount || undefined },
-        { icon: Plus, labelKey: 'nav.addProxy', path: '/proxy/new' },
+        { icon: Activity, labelKey: 'nav.monitor', path: '/monitor' },
       ],
     },
     {

@@ -1,6 +1,9 @@
 pub mod access;
+pub mod acme;
 pub mod cert;
+pub mod dns_credential;
 pub mod engine;
 pub mod logs;
+pub mod metrics;
 pub mod proxy;
 pub mod settings;

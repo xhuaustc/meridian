@@ -61,7 +61,7 @@ fn pid_path(data_dir: &Path) -> PathBuf {
 }
 
 /// Append a message to the nginx error.log so it appears in the UI logs page.
-fn append_to_error_log(data_dir: &Path, message: &str) {
+pub fn append_to_error_log(data_dir: &Path, message: &str) {
     let log_path = data_dir.join("nginx").join("logs").join("error.log");
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&log_path) {
         let ts = Local::now().format("%Y/%m/%d %H:%M:%S");

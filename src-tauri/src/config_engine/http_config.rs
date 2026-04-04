@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::store::models::{AccessList, AccessRule, Certificate, ProxyRule};
 
 /// Generate an nginx HTTP server block for one or more rules sharing the same port+domain.
@@ -5,6 +7,7 @@ pub fn generate_server_block(
     rules: &[&ProxyRule],
     certs: &[Certificate],
     access_lists: &[(AccessList, Vec<AccessRule>)],
+    data_dir: &Path,
 ) -> String {
     if rules.is_empty() {
         return String::new();
@@ -58,6 +61,19 @@ pub fn generate_server_block(
     for rule in rules {
         let path = rule.path_prefix.as_deref().unwrap_or("/");
         out.push_str(&format!("    location {} {{\n", path));
+
+        // Per-rule access log for monitoring metrics (JSON format)
+        let rule_log = data_dir.join(format!("nginx/logs/rule_{}.access.log", rule.id));
+        out.push_str(&format!(
+            "        access_log \"{}\" meridian;\n",
+            rule_log.to_string_lossy()
+        ));
+        // Keep global access log (location-level access_log overrides http-level inheritance)
+        let global_log = data_dir.join("nginx/logs/access.log");
+        out.push_str(&format!(
+            "        access_log \"{}\";\n",
+            global_log.to_string_lossy()
+        ));
 
         let scheme = if rule.tls_mode == "terminate" { "http" } else { "http" };
         out.push_str(&format!(
