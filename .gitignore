@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Nginx sidecar binaries and build cache
+src-tauri/binaries/nginx-*
+.nginx-build

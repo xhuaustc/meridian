@@ -65,12 +65,34 @@ pub struct TrayMenuItems {
 }
 
 /// Detect OS language: returns "zh" if any system locale starts with "zh", otherwise "en".
+#[cfg(not(windows))]
 fn detect_os_language() -> String {
     std::env::var("LANG")
         .or_else(|_| std::env::var("LC_ALL"))
         .or_else(|_| std::env::var("LC_MESSAGES"))
         .map(|v| if v.to_lowercase().starts_with("zh") { "zh".to_string() } else { "en".to_string() })
         .unwrap_or_else(|_| "en".to_string())
+}
+
+#[cfg(windows)]
+fn detect_os_language() -> String {
+    // Try LANG env var first (set by some tools like Git Bash)
+    if let Ok(v) = std::env::var("LANG") {
+        if v.to_lowercase().starts_with("zh") {
+            return "zh".to_string();
+        }
+    }
+    // Use Windows GetUserDefaultLocaleName via PowerShell
+    if let Ok(output) = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command", "[System.Globalization.CultureInfo]::CurrentUICulture.Name"])
+        .output()
+    {
+        let locale = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+        if locale.starts_with("zh") {
+            return "zh".to_string();
+        }
+    }
+    "en".to_string()
 }
 
 /// Read the language setting from the database, defaulting to OS locale.

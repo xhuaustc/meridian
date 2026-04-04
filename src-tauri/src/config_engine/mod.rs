@@ -3,9 +3,30 @@ pub mod http_config;
 pub mod main_config;
 pub mod stream_config;
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+/// Convert a path to a string with forward slashes.
+/// nginx on all platforms (including Windows) accepts forward slashes.
+pub fn nginx_path(p: &Path) -> Cow<'_, str> {
+    let s = p.to_string_lossy();
+    if s.contains('\\') {
+        Cow::Owned(s.replace('\\', "/"))
+    } else {
+        s
+    }
+}
+
+/// Normalize a path string (e.g. cert_path from database) to forward slashes for nginx.
+pub fn nginx_path_str(s: &str) -> Cow<'_, str> {
+    if s.contains('\\') {
+        Cow::Owned(s.replace('\\', "/"))
+    } else {
+        Cow::Borrowed(s)
+    }
+}
 
 use tracing::{info, warn};
 

@@ -9,30 +9,61 @@ use tracing::{error, info};
 use crate::error::AppError;
 use crate::store::models::NginxStatus;
 
-/// Find the nginx binary path.
-pub fn get_bundled_nginx_path() -> Result<PathBuf, AppError> {
-    let candidates = [
-        "/opt/homebrew/bin/nginx",
-        "/usr/local/bin/nginx",
-        "/usr/sbin/nginx",
-    ];
+/// The nginx binary file name on the current platform.
+#[cfg(windows)]
+const NGINX_BIN_NAME: &str = "nginx.exe";
+#[cfg(not(windows))]
+const NGINX_BIN_NAME: &str = "nginx";
 
-    for path in &candidates {
-        let p = PathBuf::from(path);
-        if p.exists() {
-            info!("Found nginx at: {:?}", p);
-            return Ok(p);
+/// Find the nginx binary path.
+///
+/// Resolution order:
+/// 1. Bundled sidecar — binary next to the app executable (production builds)
+/// 2. Well-known system paths (development fallback, Unix only)
+/// 3. PATH lookup (development fallback)
+pub fn get_bundled_nginx_path() -> Result<PathBuf, AppError> {
+    // 1. Bundled sidecar: look next to the current executable
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let sidecar = dir.join(NGINX_BIN_NAME);
+            if sidecar.exists() {
+                info!("Found bundled nginx at: {:?}", sidecar);
+                return Ok(sidecar);
+            }
         }
     }
 
-    // Try PATH lookup
-    let output = Command::new("which")
+    // 2. Well-known system paths (Unix dev mode)
+    #[cfg(not(windows))]
+    {
+        let candidates = [
+            "/opt/homebrew/bin/nginx",
+            "/usr/local/bin/nginx",
+            "/usr/sbin/nginx",
+        ];
+        for path in &candidates {
+            let p = PathBuf::from(path);
+            if p.exists() {
+                info!("Found nginx at: {:?}", p);
+                return Ok(p);
+            }
+        }
+    }
+
+    // 3. PATH lookup
+    let which_cmd = if cfg!(windows) { "where" } else { "which" };
+    let output = Command::new(which_cmd)
         .arg("nginx")
         .output()
         .map_err(|e| AppError::Nginx(format!("Failed to search PATH for nginx: {}", e)))?;
 
     if output.status.success() {
-        let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let path_str = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
         if !path_str.is_empty() {
             let p = PathBuf::from(&path_str);
             info!("Found nginx in PATH: {:?}", p);
@@ -41,7 +72,7 @@ pub fn get_bundled_nginx_path() -> Result<PathBuf, AppError> {
     }
 
     Err(AppError::Nginx(
-        "nginx binary not found. Please install nginx.".to_string(),
+        "nginx binary not found. Expected bundled sidecar or system nginx.".to_string(),
     ))
 }
 
@@ -72,18 +103,36 @@ pub fn append_to_error_log(data_dir: &Path, message: &str) {
 /// Read the PID from the nginx pid file, if it exists and the process is running.
 fn read_pid(data_dir: &Path) -> Option<u32> {
     let pid_file = pid_path(data_dir);
-    if let Ok(contents) = fs::read_to_string(&pid_file) {
-        if let Ok(pid) = contents.trim().parse::<u32>() {
-            // Check if process is actually running
-            let check = Command::new("kill").arg("-0").arg(pid.to_string()).output();
-            if let Ok(output) = check {
-                if output.status.success() {
-                    return Some(pid);
-                }
-            }
-        }
+    let contents = fs::read_to_string(&pid_file).ok()?;
+    let pid = contents.trim().parse::<u32>().ok()?;
+    if is_process_running(pid) {
+        Some(pid)
+    } else {
+        None
     }
-    None
+}
+
+/// Check whether a process with the given PID is alive.
+#[cfg(not(windows))]
+fn is_process_running(pid: u32) -> bool {
+    Command::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(windows)]
+fn is_process_running(pid: u32) -> bool {
+    Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+        .output()
+        .map(|o| {
+            o.status.success()
+                && String::from_utf8_lossy(&o.stdout).contains(&pid.to_string())
+        })
+        .unwrap_or(false)
 }
 
 /// Start the nginx process.
@@ -150,7 +199,10 @@ pub fn stop(data_dir: &Path) -> Result<(), AppError> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         // If nginx is not running, that's fine
-        if stderr.contains("no such process") || stderr.contains("is not running") {
+        if stderr.contains("no such process")
+            || stderr.contains("is not running")
+            || stderr.contains("error") && read_pid(data_dir).is_none()
+        {
             info!("nginx was not running");
             return Ok(());
         }
@@ -261,7 +313,8 @@ pub fn status(data_dir: &Path) -> NginxStatus {
     }
 }
 
-/// Try to get process uptime in seconds using `ps`.
+/// Try to get process uptime in seconds.
+#[cfg(not(windows))]
 fn get_process_uptime(pid: u32) -> Option<u64> {
     let output = Command::new("ps")
         .arg("-o")
@@ -279,7 +332,45 @@ fn get_process_uptime(pid: u32) -> Option<u64> {
     parse_etime(&etime)
 }
 
+#[cfg(windows)]
+fn get_process_uptime(pid: u32) -> Option<u64> {
+    // Use wmic to get process creation date
+    let output = Command::new("wmic")
+        .args(["process", "where", &format!("ProcessId={}", pid), "get", "CreationDate", "/value"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Output format: CreationDate=20260404123000.000000+480
+    for line in stdout.lines() {
+        let line = line.trim();
+        if let Some(val) = line.strip_prefix("CreationDate=") {
+            // Parse WMI datetime: YYYYMMDDHHmmss.ffffff+zzz
+            if val.len() >= 14 {
+                let year: i32 = val[0..4].parse().ok()?;
+                let month: u32 = val[4..6].parse().ok()?;
+                let day: u32 = val[6..8].parse().ok()?;
+                let hour: u32 = val[8..10].parse().ok()?;
+                let min: u32 = val[10..12].parse().ok()?;
+                let sec: u32 = val[12..14].parse().ok()?;
+
+                let created = chrono::NaiveDate::from_ymd_opt(year, month, day)?
+                    .and_hms_opt(hour, min, sec)?;
+                let now = chrono::Local::now().naive_local();
+                let duration = now.signed_duration_since(created);
+                return Some(duration.num_seconds().max(0) as u64);
+            }
+        }
+    }
+    None
+}
+
 /// Parse ps etime format: [[dd-]hh:]mm:ss
+#[cfg(not(windows))]
 fn parse_etime(etime: &str) -> Option<u64> {
     let mut total_seconds: u64 = 0;
     let mut rest = etime;

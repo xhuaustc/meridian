@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use super::{nginx_path, nginx_path_str};
 use crate::store::models::{AccessList, AccessRule, Certificate, ProxyRule};
 
 /// Generate an nginx HTTP server block for one or more rules sharing the same port+domain.
@@ -35,8 +36,8 @@ pub fn generate_server_block(
     if has_tls {
         if let Some(cert_id) = &first.certificate_id {
             if let Some(cert) = certs.iter().find(|c| &c.id == cert_id) {
-                out.push_str(&format!("    ssl_certificate \"{}\";\n", cert.cert_path));
-                out.push_str(&format!("    ssl_certificate_key \"{}\";\n", cert.key_path));
+                out.push_str(&format!("    ssl_certificate \"{}\";\n", nginx_path_str(&cert.cert_path)));
+                out.push_str(&format!("    ssl_certificate_key \"{}\";\n", nginx_path_str(&cert.key_path)));
                 out.push_str("    ssl_protocols TLSv1.2 TLSv1.3;\n");
                 out.push_str("    ssl_prefer_server_ciphers on;\n");
             }
@@ -66,13 +67,13 @@ pub fn generate_server_block(
         let rule_log = data_dir.join(format!("nginx/logs/rule_{}.access.log", rule.id));
         out.push_str(&format!(
             "        access_log \"{}\" meridian;\n",
-            rule_log.to_string_lossy()
+            nginx_path(&rule_log)
         ));
         // Keep global access log (location-level access_log overrides http-level inheritance)
         let global_log = data_dir.join("nginx/logs/access.log");
         out.push_str(&format!(
             "        access_log \"{}\";\n",
-            global_log.to_string_lossy()
+            nginx_path(&global_log)
         ));
 
         let scheme = if rule.tls_mode == "terminate" { "http" } else { "http" };

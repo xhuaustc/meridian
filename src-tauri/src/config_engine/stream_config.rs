@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use super::{nginx_path, nginx_path_str};
 use crate::store::models::{Certificate, ProxyRule};
 
 /// Generate an nginx stream server block for a TCP or UDP proxy rule.
@@ -12,7 +13,7 @@ pub fn generate_stream_block(rule: &ProxyRule, certs: &[Certificate], data_dir: 
     let log_path = data_dir.join(format!("nginx/logs/rule_{}.access.log", rule.id));
     out.push_str(&format!(
         "    access_log \"{}\" stream_meridian;\n",
-        log_path.to_string_lossy()
+        nginx_path(&log_path)
     ));
 
     let mut listen_directive = format!("    listen {}", rule.listen_port);
@@ -33,8 +34,8 @@ pub fn generate_stream_block(rule: &ProxyRule, certs: &[Certificate], data_dir: 
     if rule.tls_mode == "terminate" {
         if let Some(cert_id) = &rule.certificate_id {
             if let Some(cert) = certs.iter().find(|c| &c.id == cert_id) {
-                out.push_str(&format!("    ssl_certificate \"{}\";\n", cert.cert_path));
-                out.push_str(&format!("    ssl_certificate_key \"{}\";\n", cert.key_path));
+                out.push_str(&format!("    ssl_certificate \"{}\";\n", nginx_path_str(&cert.cert_path)));
+                out.push_str(&format!("    ssl_certificate_key \"{}\";\n", nginx_path_str(&cert.key_path)));
                 out.push_str("    ssl_protocols TLSv1.2 TLSv1.3;\n");
             }
         }
