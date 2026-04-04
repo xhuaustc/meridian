@@ -7,14 +7,17 @@ import { Badge } from '../components/ui/Badge';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Dialog, ConfirmDialog } from '../components/ui/Dialog';
+import { SkeletonTable } from '../components/ui/Skeleton';
 import { useAccessStore } from '../stores/access-store';
 import { useToastStore } from '../stores/toast-store';
+import { useApiError } from '../hooks/useApiError';
 import type { AccessList } from '../types';
 
 export function AccessPage() {
   const { t } = useTranslation('common');
-  const { lists, fetchLists, createList, deleteList, createRule, deleteRule } = useAccessStore();
+  const { lists, loading, fetchLists, createList, deleteList, createRule, deleteRule } = useAccessStore();
   const addToast = useToastStore((s) => s.addToast);
+  const formatError = useApiError();
 
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AccessList | null>(null);
@@ -39,7 +42,7 @@ export function AccessPage() {
       setNewName('');
       setNewPolicy('deny');
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
   };
 
@@ -49,7 +52,7 @@ export function AccessPage() {
       await deleteList(deleteTarget.id);
       addToast('success', t('access.deleteSuccess'));
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
     setDeleteTarget(null);
   };
@@ -63,7 +66,7 @@ export function AccessPage() {
       setRuleIp('');
       setRuleAction('allow');
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
   };
 
@@ -72,7 +75,7 @@ export function AccessPage() {
       await deleteRule(ruleId, listId);
       addToast('success', t('access.ruleDeleteSuccess'));
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
   };
 
@@ -85,7 +88,9 @@ export function AccessPage() {
         </Button>
       </ContentToolbar>
       <div className="p-6 overflow-y-auto flex-1">
-      {lists.length === 0 ? (
+      {loading && lists.length === 0 ? (
+        <SkeletonTable rows={3} />
+      ) : lists.length === 0 ? (
         <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] py-16 flex flex-col items-center justify-center">
           <Shield className="w-10 h-10 text-text-tertiary mb-3" />
           <p className="text-[13px] font-medium text-text-secondary">

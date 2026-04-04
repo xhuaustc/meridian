@@ -131,3 +131,34 @@ pub fn parse_line(line: &str) -> Option<LogEntry> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_valid_http_line() {
+        let line = r#"{"time":"2024-01-01T12:00:00+00:00","remote_addr":"127.0.0.1","method":"GET","uri":"/","status":200,"body_bytes_sent":1234,"request_time":0.001,"upstream_response_time":"0.001","host":"localhost"}"#;
+        let entry = parse_http_line(line);
+        assert!(entry.is_some());
+        let e = entry.unwrap();
+        assert_eq!(e.status, 200);
+        assert_eq!(e.body_bytes_sent, 1234);
+    }
+
+    #[test]
+    fn test_parse_invalid_line() {
+        assert!(parse_line("not json at all").is_none());
+        assert!(parse_line("{}").is_none());
+    }
+
+    #[test]
+    fn test_parse_line_unified() {
+        let line = r#"{"time":"2024-01-01T12:00:00+00:00","remote_addr":"127.0.0.1","method":"GET","uri":"/","status":200,"body_bytes_sent":100,"request_time":0.050,"upstream_response_time":"0.050","host":"localhost"}"#;
+        let entry = parse_line(line);
+        assert!(entry.is_some());
+        let e = entry.unwrap();
+        assert_eq!(e.status, 200);
+        assert!(e.latency_ms > 0.0);
+    }
+}

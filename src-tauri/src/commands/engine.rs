@@ -57,7 +57,7 @@ pub async fn test_nginx_config(state: State<'_, AppState>) -> Result<(bool, Stri
 pub async fn detect_conflicts(
     state: State<'_, AppState>,
 ) -> Result<Vec<PortConflict>, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     let rules = proxy_repo::list_enabled(&db)?;
     Ok(config_engine::conflict::detect_conflicts(&rules))
 }
@@ -71,7 +71,7 @@ pub async fn check_port_conflict(
     path_prefix: Option<String>,
     exclude_id: Option<String>,
 ) -> Result<Vec<PortConflict>, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     let mut rules = proxy_repo::list_enabled(&db)?;
     drop(db);
 
@@ -97,6 +97,7 @@ pub async fn check_port_conflict(
         access_list_id: None,
         websocket: false,
         custom_headers: None,
+        upstream_targets: None,
         sort_order: 0,
         created_at: String::new(),
         updated_at: String::new(),
@@ -116,7 +117,7 @@ pub async fn check_port_conflict(
 }
 
 fn apply_config_inner(state: &AppState) -> Result<Vec<PortConflict>, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     let rules = proxy_repo::list_enabled(&db)?;
     let certs = cert_repo::list_all(&db)?;
     let access_lists_raw = access_repo::list_all_lists(&db)?;

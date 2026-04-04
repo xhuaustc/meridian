@@ -6,15 +6,18 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Toggle } from '../components/ui/Toggle';
 import { Dialog, ConfirmDialog } from '../components/ui/Dialog';
+import { SkeletonTable } from '../components/ui/Skeleton';
 import { useHostsStore } from '../stores/hosts-store';
 import { useToastStore } from '../stores/toast-store';
+import { useApiError } from '../hooks/useApiError';
 import type { HostEntry } from '../types';
 
 export function HostsPage() {
   const { t } = useTranslation('common');
-  const { entries, fetchEntries, createEntry, updateEntry, deleteEntry, toggleEntry, syncToSystem } =
+  const { entries, loading, fetchEntries, createEntry, updateEntry, deleteEntry, toggleEntry, syncToSystem } =
     useHostsStore();
   const addToast = useToastStore((s) => s.addToast);
+  const formatError = useApiError();
 
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
@@ -61,7 +64,7 @@ export function HostsPage() {
       addToast('success', t('hosts.createSuccess'));
       setShowCreate(false);
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
   };
 
@@ -77,7 +80,7 @@ export function HostsPage() {
       addToast('success', t('hosts.updateSuccess'));
       setEditTarget(null);
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
   };
 
@@ -87,7 +90,7 @@ export function HostsPage() {
       await deleteEntry(deleteTarget.id);
       addToast('success', t('hosts.deleteSuccess'));
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
     setDeleteTarget(null);
   };
@@ -97,7 +100,7 @@ export function HostsPage() {
       await toggleEntry(entry.id, !entry.enabled);
       addToast('success', t('hosts.toggleSuccess'));
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
   };
 
@@ -107,7 +110,7 @@ export function HostsPage() {
       await syncToSystem();
       addToast('success', t('hosts.syncSuccess'));
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     } finally {
       setSyncing(false);
     }
@@ -187,7 +190,9 @@ export function HostsPage() {
           />
         </div>
 
-        {filteredEntries.length === 0 ? (
+        {loading && entries.length === 0 ? (
+          <SkeletonTable rows={3} />
+        ) : filteredEntries.length === 0 ? (
           <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] py-16 flex flex-col items-center justify-center">
             <Globe className="w-10 h-10 text-text-tertiary mb-3" />
             <p className="text-[13px] font-medium text-text-secondary">

@@ -2,12 +2,19 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, Upload, Database } from 'lucide-react';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
+import { save, open } from '@tauri-apps/plugin-dialog';
+import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import { ContentToolbar } from '../components/layout/ContentToolbar';
 import { Button } from '../components/ui/Button';
 import { Toggle } from '../components/ui/Toggle';
 import { ConfirmDialog } from '../components/ui/Dialog';
 import { useSettingsStore } from '../stores/settings-store';
 import { useToastStore } from '../stores/toast-store';
+import { useApiError } from '../hooks/useApiError';
+import { useProxyStore } from '../stores/proxy-store';
+import { useCertStore } from '../stores/cert-store';
+import { useAccessStore } from '../stores/access-store';
+import { useHostsStore } from '../stores/hosts-store';
 import * as api from '../lib/api';
 import { cn } from '../lib/utils';
 import type { ExportData } from '../types';
@@ -16,6 +23,11 @@ export function SettingsPage() {
   const { t, i18n } = useTranslation('common');
   const { theme, setTheme, language, setLanguage } = useSettingsStore();
   const addToast = useToastStore((s) => s.addToast);
+  const formatError = useApiError();
+  const fetchProxies = useProxyStore((s) => s.fetchProxies);
+  const fetchCertificates = useCertStore((s) => s.fetchCertificates);
+  const fetchLists = useAccessStore((s) => s.fetchLists);
+  const fetchEntries = useHostsStore((s) => s.fetchEntries);
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   const [importPayload, setImportPayload] = useState<ExportData | null>(null);
   const [autoStartEngine, setAutoStartEngine] = useState(false);
@@ -36,46 +48,49 @@ export function SettingsPage() {
   const handleExport = async () => {
     try {
       const data = await api.exportData();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `meridian-export-${new Date().toISOString().split('T')[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const filePath = await save({
+        defaultPath: `meridian-export-${new Date().toISOString().split('T')[0]}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (!filePath) return; // user cancelled
+      await writeTextFile(filePath, JSON.stringify(data, null, 2));
       addToast('success', t('settings.exportSuccess'));
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
   };
 
-  const handleImportFile = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const data = JSON.parse(text) as ExportData;
-        setImportPayload(data);
-        setShowImportConfirm(true);
-      } catch {
-        addToast('error', t('common.error'));
-      }
-    };
-    input.click();
+  const handleImportFile = async () => {
+    try {
+      const filePath = await open({
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+        multiple: false,
+      });
+      if (!filePath) return; // user cancelled
+      const text = await readTextFile(filePath as string);
+      const data = JSON.parse(text) as ExportData;
+      setImportPayload(data);
+      setShowImportConfirm(true);
+    } catch {
+      addToast('error', t('common.error'));
+    }
   };
 
   const handleImport = async () => {
     if (!importPayload) return;
     try {
       await api.importData(importPayload);
+      // Refresh all stores with imported data
+      await Promise.all([
+        fetchProxies(),
+        fetchCertificates(),
+        fetchLists(),
+        fetchEntries(),
+      ]);
       addToast('success', t('settings.importSuccess'));
       setImportPayload(null);
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
   };
 
@@ -84,7 +99,7 @@ export function SettingsPage() {
       const path = await api.backupDatabase();
       addToast('success', t('settings.backupSuccess', { path }));
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
   };
 
@@ -181,7 +196,7 @@ export function SettingsPage() {
                 try {
                   if (v) { await enable(); } else { await disable(); }
                   setLaunchAtLogin(v);
-                } catch (e) { addToast('error', String(e)); }
+                } catch (e) { addToast('error', formatError(e)); }
               }}
             />
           </div>

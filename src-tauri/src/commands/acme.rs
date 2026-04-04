@@ -29,7 +29,7 @@ pub async fn request_acme_cert(
 
     // Validate DNS credential exists (fast, local DB only)
     let dns_cred = {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
         dns_credential_repo::get_by_id(&db, &dns_credential_id)?
     };
 
@@ -53,7 +53,7 @@ pub async fn request_acme_cert(
 
     // Create a pending certificate record and return immediately — no network calls
     let cert = {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
         cert_repo::create_pending(
             &db,
             &cert_name,
@@ -168,7 +168,7 @@ async fn do_acme_background(
 pub async fn get_acme_renewal_status(
     state: State<'_, AppState>,
 ) -> Result<Vec<RenewalStatus>, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     let certs = cert_repo::list_acme_auto_renew(&db)?;
 
     let statuses: Vec<RenewalStatus> = certs

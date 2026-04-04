@@ -12,7 +12,7 @@ pub async fn list_hosts(
     keyword: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<HostEntry>, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     hosts_repo::list_all(&db, keyword.as_deref())
 }
 
@@ -24,7 +24,7 @@ pub async fn create_host(
     validators::validate_host_entry(&input.ip, &input.hostname)?;
 
     let entry = {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
 
         if let Some(existing) = hosts_repo::find_by_hostname(&db, &input.hostname)? {
             return Err(AppError::Conflict(format!(
@@ -59,7 +59,7 @@ pub async fn update_host(
     }
 
     let entry = {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
 
         if let Some(ref hn) = hostname {
             if let Some(existing) = hosts_repo::find_by_hostname(&db, hn)? {
@@ -88,7 +88,7 @@ pub async fn delete_host(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
         hosts_repo::delete(&db, &id)?;
     }
 
@@ -106,7 +106,7 @@ pub async fn toggle_host(
     state: State<'_, AppState>,
 ) -> Result<HostEntry, AppError> {
     let entry = {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
         hosts_repo::toggle(&db, &id, enabled)?
     };
 
@@ -123,7 +123,7 @@ pub async fn check_hostname_exists(
     exclude_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Option<HostEntry>, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     let found = hosts_repo::find_by_hostname(&db, &hostname)?;
     if let Some(ref entry) = found {
         if let Some(ref eid) = exclude_id {
@@ -143,7 +143,7 @@ pub async fn sync_hosts_file(
 }
 
 fn sync_hosts_to_system(state: &AppState) -> Result<(), AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     let entries = hosts_repo::list_enabled(&db)?;
     drop(db);
     hosts_manager::sync_to_system(&entries)

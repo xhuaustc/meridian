@@ -1,16 +1,20 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Pencil, Copy, Trash2, BarChart3, ClipboardList, Activity } from 'lucide-react';
+import { Plus, Search, Pencil, Copy, Trash2, BarChart3, ClipboardList, Activity, Power, PowerOff, Globe, Shield, ArrowRight, Lock } from 'lucide-react';
 import { ContentToolbar } from '../components/layout/ContentToolbar';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { SkeletonStats, SkeletonTable } from '../components/ui/Skeleton';
 import { Toggle } from '../components/ui/Toggle';
 import { ConfirmDialog } from '../components/ui/Dialog';
 import { useProxyStore } from '../stores/proxy-store';
 import { useCertStore } from '../stores/cert-store';
+import { useAccessStore } from '../stores/access-store';
+import { useHostsStore } from '../stores/hosts-store';
 import { useToastStore } from '../stores/toast-store';
-import { checkExpiringCerts, createProxy, listProxies, checkHostnameExists, deleteHost } from '../lib/api';
+import { useApiError } from '../hooks/useApiError';
+import { checkExpiringCerts, createProxy, listProxies, checkHostnameExists, deleteHost, batchToggleProxies, batchDeleteProxies } from '../lib/api';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { cn } from '../lib/utils';
 import type { ProxyRule } from '../types';
@@ -47,23 +51,30 @@ function getRoute(rule: ProxyRule): { from: string; to: string; href: string | n
 export function DashboardPage() {
   const { t } = useTranslation('common');
   const navigate = useNavigate();
-  const { proxies, fetchProxies, toggleProxy, deleteProxy } = useProxyStore();
+  const { proxies, loading, fetchProxies, toggleProxy, deleteProxy } = useProxyStore();
   const { certificates, fetchCertificates } = useCertStore();
+  const { lists: accessLists, fetchLists: fetchAccessLists } = useAccessStore();
+  const { entries: hostEntries, fetchEntries: fetchHostEntries } = useHostsStore();
   const addToast = useToastStore((s) => s.addToast);
+  const formatError = useApiError();
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [deleteTarget, setDeleteTarget] = useState<ProxyRule | null>(null);
   const [expiringCount, setExpiringCount] = useState(0);
   const [hostsCleanupTarget, setHostsCleanupTarget] = useState<{ hostname: string; hostEntryId: string } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
 
   useEffect(() => {
     fetchProxies();
     fetchCertificates();
+    fetchAccessLists();
+    fetchHostEntries();
     checkExpiringCerts(30)
       .then((certs) => setExpiringCount(certs.length))
       .catch(() => {});
-  }, [fetchProxies, fetchCertificates]);
+  }, [fetchProxies, fetchCertificates, fetchAccessLists, fetchHostEntries]);
 
   const filtered = useMemo(() => {
     let result = proxies;
@@ -84,13 +95,7 @@ export function DashboardPage() {
 
   const stats = useMemo(() => {
     const active = proxies.filter((p) => p.enabled).length;
-    const httpCount = proxies.filter(
-      (p) => p.proxy_type === 'http',
-    ).length;
-    const streamCount = proxies.filter(
-      (p) => p.proxy_type === 'stream_tcp' || p.proxy_type === 'stream_udp',
-    ).length;
-    return { active, total: proxies.length, httpCount, streamCount };
+    return { active, total: proxies.length };
   }, [proxies]);
 
   const handleToggle = async (rule: ProxyRule) => {
@@ -98,7 +103,7 @@ export function DashboardPage() {
       await toggleProxy(rule.id, !rule.enabled);
       addToast('success', t('dashboard.toggleSuccess'));
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
   };
 
@@ -109,7 +114,7 @@ export function DashboardPage() {
       await deleteProxy(deleteTarget.id);
       addToast('success', t('dashboard.deleteSuccess'));
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
       setDeleteTarget(null);
       return;
     }
@@ -148,11 +153,55 @@ export function DashboardPage() {
         certificate_id: rule.certificate_id,
         access_list_id: rule.access_list_id,
         websocket: rule.websocket,
+        custom_headers: rule.custom_headers,
+        upstream_targets: rule.upstream_targets,
       });
       await fetchProxies();
       addToast('success', t('dashboard.copySuccess'));
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selected.size === filtered.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filtered.map((r) => r.id)));
+    }
+  };
+
+  const handleBatchToggle = async (enabled: boolean) => {
+    const ids = Array.from(selected);
+    try {
+      const count = await batchToggleProxies(ids, enabled);
+      addToast('success', t('dashboard.batchToggleSuccess', { count }));
+      setSelected(new Set());
+      await fetchProxies();
+    } catch (e) {
+      addToast('error', formatError(e));
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    const ids = Array.from(selected);
+    try {
+      const count = await batchDeleteProxies(ids);
+      addToast('success', t('dashboard.batchDeleteSuccess', { count }));
+      setSelected(new Set());
+      setBatchDeleteOpen(false);
+      await fetchProxies();
+    } catch (e) {
+      addToast('error', formatError(e));
     }
   };
 
@@ -173,10 +222,21 @@ export function DashboardPage() {
         </Button>
       </ContentToolbar>
       <div className="p-6 overflow-y-auto flex-1">
-        {/* Stats */}
+        {loading && proxies.length === 0 ? (
+          <>
+            <SkeletonStats />
+            <SkeletonTable rows={5} />
+          </>
+        ) : (
+        <>
+        {/* Stats — cross-resource overview */}
         <div className="grid grid-cols-4 gap-3 mb-5">
-          <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3.5">
-            <div className="text-[11px] text-text-tertiary uppercase tracking-[0.03em]">
+          <button
+            onClick={() => {/* already on this page */}}
+            className="bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3.5 text-left cursor-default"
+          >
+            <div className="flex items-center gap-2 text-[11px] text-text-tertiary uppercase tracking-[0.03em]">
+              <BarChart3 className="w-3.5 h-3.5 opacity-50" />
               {t('dashboard.activeProxies')}
             </div>
             <div className="text-[22px] font-semibold tracking-[-0.02em] mt-0.5 text-success">
@@ -185,31 +245,13 @@ export function DashboardPage() {
             <div className="text-[11px] text-text-tertiary mt-0.5">
               {t('dashboard.totalRules', { count: stats.total })}
             </div>
-          </div>
-          <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3.5">
-            <div className="text-[11px] text-text-tertiary uppercase tracking-[0.03em]">
-              {t('dashboard.httpHttps')}
-            </div>
-            <div className="text-[22px] font-semibold tracking-[-0.02em] mt-0.5">
-              {stats.httpCount}
-            </div>
-            <div className="text-[11px] text-text-tertiary mt-0.5">
-              {t('dashboard.layer7')}
-            </div>
-          </div>
-          <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3.5">
-            <div className="text-[11px] text-text-tertiary uppercase tracking-[0.03em]">
-              {t('dashboard.tcpUdp')}
-            </div>
-            <div className="text-[22px] font-semibold tracking-[-0.02em] mt-0.5">
-              {stats.streamCount}
-            </div>
-            <div className="text-[11px] text-text-tertiary mt-0.5">
-              {t('dashboard.layer4')}
-            </div>
-          </div>
-          <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3.5">
-            <div className="text-[11px] text-text-tertiary uppercase tracking-[0.03em]">
+          </button>
+          <button
+            onClick={() => navigate('/certs')}
+            className="bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3.5 text-left hover:border-accent/40 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-2 text-[11px] text-text-tertiary uppercase tracking-[0.03em]">
+              <Lock className="w-3.5 h-3.5 opacity-50" />
               {t('dashboard.certificates')}
             </div>
             <div className="text-[22px] font-semibold tracking-[-0.02em] mt-0.5">
@@ -220,7 +262,37 @@ export function DashboardPage() {
                 ? t('dashboard.expiringSoon', { count: expiringCount })
                 : '\u00A0'}
             </div>
-          </div>
+          </button>
+          <button
+            onClick={() => navigate('/access')}
+            className="bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3.5 text-left hover:border-accent/40 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-2 text-[11px] text-text-tertiary uppercase tracking-[0.03em]">
+              <Shield className="w-3.5 h-3.5 opacity-50" />
+              {t('dashboard.accessLists')}
+            </div>
+            <div className="text-[22px] font-semibold tracking-[-0.02em] mt-0.5">
+              {accessLists.length}
+            </div>
+            <div className="text-[11px] text-text-tertiary mt-0.5">
+              {t('dashboard.accessListsDesc', { count: accessLists.length })}
+            </div>
+          </button>
+          <button
+            onClick={() => navigate('/hosts')}
+            className="bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3.5 text-left hover:border-accent/40 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-2 text-[11px] text-text-tertiary uppercase tracking-[0.03em]">
+              <Globe className="w-3.5 h-3.5 opacity-50" />
+              {t('dashboard.hostEntries')}
+            </div>
+            <div className="text-[22px] font-semibold tracking-[-0.02em] mt-0.5">
+              {hostEntries.length}
+            </div>
+            <div className="text-[11px] text-text-tertiary mt-0.5">
+              {t('dashboard.hostEntriesDesc', { count: hostEntries.length })}
+            </div>
+          </button>
         </div>
 
         {/* Search & Filter */}
@@ -252,21 +324,84 @@ export function DashboardPage() {
 
         {/* Table */}
         {filtered.length === 0 ? (
-          <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] py-16 flex flex-col items-center justify-center">
-            <BarChart3 className="w-10 h-10 text-text-tertiary mb-3" />
-            <p className="text-[13px] font-medium text-text-secondary">
-              {t('dashboard.emptyTitle')}
-            </p>
-            <p className="text-[12px] text-text-tertiary mt-1">
-              {t('dashboard.emptyDesc')}
-            </p>
-          </div>
+          proxies.length === 0 ? (
+            /* First-run onboarding empty state */
+            <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] py-12 px-8">
+              <div className="text-center mb-8">
+                <BarChart3 className="w-12 h-12 text-accent mx-auto mb-3 opacity-80" />
+                <p className="text-[15px] font-semibold text-text-primary">
+                  {t('dashboard.onboardingTitle')}
+                </p>
+                <p className="text-[12.5px] text-text-tertiary mt-1.5 max-w-md mx-auto">
+                  {t('dashboard.onboardingDesc')}
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-4 max-w-2xl mx-auto mb-8">
+                <button
+                  onClick={() => navigate('/proxy/new')}
+                  className="flex flex-col items-center gap-2.5 p-5 bg-bg-primary border border-border rounded-[var(--radius-md)] hover:border-accent hover:bg-accent/5 transition-colors cursor-pointer group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
+                    <Globe className="w-5 h-5 text-accent" />
+                  </div>
+                  <span className="text-[12.5px] font-medium text-text-primary">{t('dashboard.onboardingStep1')}</span>
+                  <span className="text-[11px] text-text-tertiary text-center">{t('dashboard.onboardingStep1Desc')}</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-text-tertiary group-hover:text-accent transition-colors" />
+                </button>
+                <button
+                  onClick={() => navigate('/certs')}
+                  className="flex flex-col items-center gap-2.5 p-5 bg-bg-primary border border-border rounded-[var(--radius-md)] hover:border-accent hover:bg-accent/5 transition-colors cursor-pointer group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-success/10 flex items-center justify-center">
+                    <Shield className="w-5 h-5 text-success" />
+                  </div>
+                  <span className="text-[12.5px] font-medium text-text-primary">{t('dashboard.onboardingStep2')}</span>
+                  <span className="text-[11px] text-text-tertiary text-center">{t('dashboard.onboardingStep2Desc')}</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-text-tertiary group-hover:text-accent transition-colors" />
+                </button>
+                <button
+                  onClick={() => navigate('/hosts')}
+                  className="flex flex-col items-center gap-2.5 p-5 bg-bg-primary border border-border rounded-[var(--radius-md)] hover:border-accent hover:bg-accent/5 transition-colors cursor-pointer group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-warning/10 flex items-center justify-center">
+                    <ClipboardList className="w-5 h-5 text-warning" />
+                  </div>
+                  <span className="text-[12.5px] font-medium text-text-primary">{t('dashboard.onboardingStep3')}</span>
+                  <span className="text-[11px] text-text-tertiary text-center">{t('dashboard.onboardingStep3Desc')}</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-text-tertiary group-hover:text-accent transition-colors" />
+                </button>
+              </div>
+              <div className="text-center">
+                <Button variant="primary" onClick={() => navigate('/proxy/new')}>
+                  <Plus className="w-3.5 h-3.5" />
+                  {t('dashboard.addProxy')}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            /* Filtered empty state */
+            <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] py-16 flex flex-col items-center justify-center">
+              <Search className="w-10 h-10 text-text-tertiary mb-3" />
+              <p className="text-[13px] font-medium text-text-secondary">
+                {t('dashboard.noResults')}
+              </p>
+            </div>
+          )
         ) : (
           <div className="card-elevated bg-bg-secondary border border-border rounded-[var(--radius-md)] overflow-hidden">
             <table className="w-full border-collapse">
               <thead>
                 <tr>
-                  <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-text-tertiary uppercase tracking-[0.03em] bg-bg-sidebar border-b border-border w-[30%]">
+                  <th className="px-3 py-2.5 bg-bg-sidebar border-b border-border w-10">
+                    <input
+                      type="checkbox"
+                      checked={filtered.length > 0 && selected.size === filtered.length}
+                      onChange={toggleSelectAll}
+                      className="accent-accent cursor-pointer"
+                      aria-label={t('dashboard.selectAll')}
+                    />
+                  </th>
+                  <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-text-tertiary uppercase tracking-[0.03em] bg-bg-sidebar border-b border-border w-[28%]">
                     {t('dashboard.colName')}
                   </th>
                   <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-text-tertiary uppercase tracking-[0.03em] bg-bg-sidebar border-b border-border w-[8%]">
@@ -293,6 +428,14 @@ export function DashboardPage() {
                       key={rule.id}
                       className="group hover:bg-bg-primary border-b border-border last:border-b-0"
                     >
+                      <td className="px-3 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(rule.id)}
+                          onChange={() => toggleSelect(rule.id)}
+                          className="accent-accent cursor-pointer"
+                        />
+                      </td>
                       <td className="px-4 py-3 text-[13px]">
                         <div className="font-medium text-text-primary">{rule.name}</div>
                       </td>
@@ -347,11 +490,12 @@ export function DashboardPage() {
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 touch:opacity-100">
                           <button
                             onClick={() => navigate(`/logs?proxyId=${rule.id}`)}
                             className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-sidebar hover:text-text-primary"
                             title={t('dashboard.logs')}
+                            aria-label={t('dashboard.logs')}
                           >
                             <ClipboardList className="w-[15px] h-[15px]" />
                           </button>
@@ -359,6 +503,7 @@ export function DashboardPage() {
                             onClick={() => navigate(`/monitor?proxyId=${rule.id}`)}
                             className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-sidebar hover:text-text-primary"
                             title={t('dashboard.monitor')}
+                            aria-label={t('dashboard.monitor')}
                           >
                             <Activity className="w-[15px] h-[15px]" />
                           </button>
@@ -366,6 +511,7 @@ export function DashboardPage() {
                             onClick={() => navigate(`/proxy/${rule.id}`)}
                             className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-sidebar hover:text-text-primary"
                             title={t('dashboard.edit')}
+                            aria-label={t('dashboard.edit')}
                           >
                             <Pencil className="w-[15px] h-[15px]" />
                           </button>
@@ -373,6 +519,7 @@ export function DashboardPage() {
                             onClick={() => handleCopy(rule)}
                             className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-sidebar hover:text-text-primary"
                             title={t('dashboard.copy')}
+                            aria-label={t('dashboard.copy')}
                           >
                             <Copy className="w-[15px] h-[15px]" />
                           </button>
@@ -380,6 +527,7 @@ export function DashboardPage() {
                             onClick={() => setDeleteTarget(rule)}
                             className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-sidebar hover:text-error"
                             title={t('dashboard.delete')}
+                            aria-label={t('dashboard.delete')}
                           >
                             <Trash2 className="w-[15px] h-[15px]" />
                           </button>
@@ -393,12 +541,56 @@ export function DashboardPage() {
           </div>
         )}
 
+        </>
+        )}
+
         <ConfirmDialog
           open={!!deleteTarget}
           onClose={() => setDeleteTarget(null)}
           onConfirm={handleDelete}
           title={t('common.delete')}
           message={t('dashboard.confirmDelete', { name: deleteTarget?.name })}
+          confirmText={t('common.delete')}
+          danger
+        />
+
+        {/* Floating batch action bar */}
+        {selected.size > 0 && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-bg-secondary border border-border rounded-[var(--radius-md)] shadow-lg px-5 py-3">
+            <span className="text-[13px] font-medium text-text-primary">
+              {t('dashboard.selected', { count: selected.size })}
+            </span>
+            <div className="w-px h-5 bg-border" />
+            <button
+              onClick={() => handleBatchToggle(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-sm)] text-[12px] bg-success/10 text-success hover:bg-success/20 cursor-pointer"
+            >
+              <Power className="w-3.5 h-3.5" />
+              {t('dashboard.batchEnable')}
+            </button>
+            <button
+              onClick={() => handleBatchToggle(false)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-sm)] text-[12px] bg-bg-hover text-text-secondary hover:bg-bg-sidebar cursor-pointer"
+            >
+              <PowerOff className="w-3.5 h-3.5" />
+              {t('dashboard.batchDisable')}
+            </button>
+            <button
+              onClick={() => setBatchDeleteOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-sm)] text-[12px] bg-error/10 text-error hover:bg-error/20 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {t('dashboard.batchDelete')}
+            </button>
+          </div>
+        )}
+
+        <ConfirmDialog
+          open={batchDeleteOpen}
+          onClose={() => setBatchDeleteOpen(false)}
+          onConfirm={handleBatchDelete}
+          title={t('common.delete')}
+          message={t('dashboard.batchDeleteConfirm', { count: selected.size })}
           confirmText={t('common.delete')}
           danger
         />
@@ -412,7 +604,7 @@ export function DashboardPage() {
                 await deleteHost(hostsCleanupTarget.hostEntryId);
                 addToast('success', t('hosts.deleteSuccess'));
               } catch (e) {
-                addToast('error', String(e));
+                addToast('error', formatError(e));
               }
             }
           }}

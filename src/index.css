@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant touch (@media (hover: none));
+
 @theme {
   --color-bg-primary: #fafaf9;
   --color-bg-secondary: #ffffff;

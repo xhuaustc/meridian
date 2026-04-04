@@ -62,3 +62,29 @@ stream {{
         dir = dir,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_main_config_has_required_sections() {
+        let data_dir = PathBuf::from("/tmp/test");
+        let config = generate_main_config(&data_dir);
+        assert!(config.contains("worker_processes"));
+        assert!(config.contains("http {"));
+        assert!(config.contains("stream {"));
+        assert!(config.contains("include"));
+        assert!(config.contains("conf.d/*.conf"));
+        assert!(config.contains("stream.d/*.conf"));
+    }
+
+    #[test]
+    fn test_main_config_has_json_log_format() {
+        let data_dir = PathBuf::from("/tmp/test");
+        let config = generate_main_config(&data_dir);
+        assert!(config.contains("log_format"));
+        assert!(config.contains("meridian"));
+    }
+}

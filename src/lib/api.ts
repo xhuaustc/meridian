@@ -46,6 +46,12 @@ export const deleteProxy = (id: string) => invoke<void>('delete_proxy', { id });
 export const toggleProxy = (id: string, enabled: boolean) =>
   invoke<ProxyRule>('toggle_proxy', { id, enabled });
 
+export const batchToggleProxies = (ids: string[], enabled: boolean) =>
+  invoke<number>('batch_toggle_proxies', { ids, enabled });
+
+export const batchDeleteProxies = (ids: string[]) =>
+  invoke<number>('batch_delete_proxies', { ids });
+
 // --- Certificates ---
 export const listCertificates = () => invoke<Certificate[]>('list_certificates');
 
@@ -250,3 +256,20 @@ export const syncTray = () => invoke<void>('sync_tray');
 
 // --- Platform ---
 export const getPlatform = () => invoke<string>('get_platform');
+
+// --- Error parsing ---
+export interface ApiError {
+  code: string;
+  message: string;
+}
+
+export function parseApiError(e: unknown): ApiError {
+  const raw = String(e);
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed.code && parsed.message) {
+      return parsed as ApiError;
+    }
+  } catch { /* not JSON */ }
+  return { code: 'UNKNOWN', message: raw };
+}

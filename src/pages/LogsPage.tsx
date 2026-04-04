@@ -9,6 +9,7 @@ import { Toggle } from '../components/ui/Toggle';
 import { ConfirmDialog } from '../components/ui/Dialog';
 import { useProxyStore } from '../stores/proxy-store';
 import { useToastStore } from '../stores/toast-store';
+import { useApiError } from '../hooks/useApiError';
 import * as api from '../lib/api';
 import { cn } from '../lib/utils';
 
@@ -40,6 +41,7 @@ function renderLogLine(line: string) {
 export function LogsPage() {
   const { t } = useTranslation('common');
   const addToast = useToastStore((s) => s.addToast);
+  const formatError = useApiError();
   const { proxies, fetchProxies } = useProxyStore();
   const [searchParams] = useSearchParams();
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -105,7 +107,7 @@ export function LogsPage() {
       setTotalLines(0);
       addToast('success', t('logs.clearSuccess'));
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
   };
 

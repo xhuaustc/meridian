@@ -23,7 +23,7 @@ pub async fn list_proxies(
     search: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<ProxyListResponse, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     let rules = proxy_repo::list_filtered(
         &db,
         proxy_type.as_deref(),
@@ -36,7 +36,7 @@ pub async fn list_proxies(
 
 #[tauri::command]
 pub async fn get_proxy(id: String, state: State<'_, AppState>) -> Result<ProxyRule, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     proxy_repo::get_by_id(&db, &id)
 }
 
@@ -48,7 +48,7 @@ pub async fn create_proxy(
     validators::validate_create_proxy(&input)?;
 
     let rule = {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
         proxy_repo::create(&db, &input)?
     };
 
@@ -64,10 +64,15 @@ pub async fn update_proxy(
     input: UpdateProxyRule,
     state: State<'_, AppState>,
 ) -> Result<ProxyRule, AppError> {
-    validators::validate_update_proxy(&input)?;
+    // Load existing rule first so we can do merged cross-field validation
+    let existing = {
+        let db = state.get_conn()?;
+        proxy_repo::get_by_id(&db, &id)?
+    };
+    validators::validate_update_proxy_merged(&input, &existing)?;
 
     let rule = {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
         proxy_repo::update(&db, &id, &input)?
     };
 
@@ -80,7 +85,7 @@ pub async fn update_proxy(
 #[tauri::command]
 pub async fn delete_proxy(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
     {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
         proxy_repo::delete(&db, &id)?;
     }
 
@@ -97,7 +102,7 @@ pub async fn toggle_proxy(
     state: State<'_, AppState>,
 ) -> Result<ProxyRule, AppError> {
     let rule = {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
         proxy_repo::toggle_enabled(&db, &id, enabled)?
     };
 
@@ -107,9 +112,36 @@ pub async fn toggle_proxy(
     Ok(rule)
 }
 
+#[tauri::command]
+pub async fn batch_toggle_proxies(
+    ids: Vec<String>,
+    enabled: bool,
+    state: State<'_, AppState>,
+) -> Result<usize, AppError> {
+    let affected = {
+        let db = state.get_conn()?;
+        proxy_repo::batch_toggle(&db, &ids, enabled)?
+    };
+    let _ = apply_and_reload_inner(&state);
+    Ok(affected)
+}
+
+#[tauri::command]
+pub async fn batch_delete_proxies(
+    ids: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<usize, AppError> {
+    let affected = {
+        let db = state.get_conn()?;
+        proxy_repo::batch_delete(&db, &ids)?
+    };
+    let _ = apply_and_reload_inner(&state);
+    Ok(affected)
+}
+
 /// Helper: read all data from DB, generate configs, test, and reload.
 fn apply_and_reload_inner(state: &AppState) -> Result<(), AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     let rules = proxy_repo::list_enabled(&db)?;
     let certs = cert_repo::list_all(&db)?;
     let access_lists_raw = access_repo::list_all_lists(&db)?;

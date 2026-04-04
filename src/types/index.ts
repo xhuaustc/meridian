@@ -19,9 +19,16 @@ export interface ProxyRule {
   access_list_id: string | null;
   websocket: boolean;
   custom_headers: string | null;
+  upstream_targets: string | null;
   sort_order: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface UpstreamTarget {
+  host: string;
+  port: number;
+  weight?: number;
 }
 
 export interface CreateProxyRule {
@@ -38,6 +45,7 @@ export interface CreateProxyRule {
   access_list_id?: string | null;
   websocket?: boolean;
   custom_headers?: string | null;
+  upstream_targets?: string | null;
   sort_order?: number;
 }
 
@@ -56,6 +64,7 @@ export interface UpdateProxyRule {
   access_list_id?: string | null;
   websocket?: boolean;
   custom_headers?: string | null;
+  upstream_targets?: string | null;
   sort_order?: number;
 }
 

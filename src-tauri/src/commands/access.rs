@@ -14,7 +14,7 @@ use crate::AppState;
 pub async fn list_access_lists(
     state: State<'_, AppState>,
 ) -> Result<Vec<AccessListDetail>, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     let lists = access_repo::list_all_lists(&db)?;
     let mut result = Vec::new();
     for list in lists {
@@ -35,7 +35,7 @@ pub async fn get_access_list(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<AccessListDetail, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     let with_rules = access_repo::get_list_with_rules(&db, &id)?;
     let bound = proxy_repo::find_by_access_list(&db, &id)?;
     let bound_proxies = bound.into_iter().map(|r| r.name).collect();
@@ -53,7 +53,7 @@ pub async fn create_access_list(
 ) -> Result<AccessList, AppError> {
     validators::validate_create_access_list(&input.name)?;
 
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
 
     // Check name uniqueness (case-insensitive)
     if let Some(existing) = access_repo::find_by_name_ci(&db, &input.name)? {
@@ -78,7 +78,7 @@ pub async fn update_access_list(
     }
 
     let result = {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
 
         // Check name uniqueness if changing name
         if let Some(ref n) = name {
@@ -106,7 +106,7 @@ pub async fn delete_access_list(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
 
     // Check for referencing proxy rules (Fix 2)
     let referencing = proxy_repo::find_by_access_list(&db, &id)?;
@@ -128,7 +128,7 @@ pub async fn create_access_rule(
     validators::validate_ip_cidr(&input.ip_cidr)?;
 
     let rule = {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
 
         // Check for duplicate rule
         if let Some(_existing) =
@@ -155,7 +155,7 @@ pub async fn delete_access_rule(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
         access_repo::delete_rule(&db, &id)?;
     }
 
@@ -172,7 +172,7 @@ pub async fn reorder_access_rules(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
         access_repo::reorder_rules(&db, &access_list_id, &rule_ids)?;
     }
 
@@ -184,7 +184,7 @@ pub async fn reorder_access_rules(
 
 /// Helper: read all data from DB, generate configs, test, and reload.
 fn apply_and_reload_inner(state: &AppState) -> Result<(), AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     let rules = proxy_repo::list_enabled(&db)?;
     let certs = cert_repo::list_all(&db)?;
     let access_lists_raw = access_repo::list_all_lists(&db)?;

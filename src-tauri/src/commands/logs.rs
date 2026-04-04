@@ -165,3 +165,27 @@ fn extract_json_time(line: &str) -> Option<String> {
     let end = line[start..].find('"')? + start;
     Some(line[start..end].to_string())
 }
+
+use crate::store::DbPool;
+
+/// Spawn a background task that runs log cleanup every 6 hours.
+pub fn spawn_log_cleanup_task(pool: DbPool, data_dir: std::path::PathBuf) {
+    std::thread::spawn(move || {
+        // Initial delay — startup cleanup already ran
+        std::thread::sleep(std::time::Duration::from_secs(60));
+
+        loop {
+            // Sleep 6 hours
+            std::thread::sleep(std::time::Duration::from_secs(6 * 60 * 60));
+
+            let retention_days = pool.get().ok()
+                .and_then(|db| crate::store::settings_repo::get(&db, "log_retention_days").ok().flatten())
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(7);
+
+            let logs_dir = data_dir.join("nginx/logs");
+            info!("Running scheduled log cleanup (retention: {} days)", retention_days);
+            cleanup_old_logs(&logs_dir, retention_days);
+        }
+    });
+}

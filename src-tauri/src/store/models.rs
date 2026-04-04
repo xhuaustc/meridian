@@ -17,6 +17,9 @@ pub struct ProxyRule {
     pub access_list_id: Option<String>,
     pub websocket: bool,
     pub custom_headers: Option<String>,
+    /// JSON array of {host, port, weight} for load balancing.
+    /// When set, overrides upstream_host/upstream_port.
+    pub upstream_targets: Option<String>,
     pub sort_order: i32,
     pub created_at: String,
     pub updated_at: String,
@@ -37,6 +40,7 @@ pub struct CreateProxyRule {
     pub access_list_id: Option<String>,
     pub websocket: Option<bool>,
     pub custom_headers: Option<String>,
+    pub upstream_targets: Option<String>,
     pub sort_order: Option<i32>,
 }
 
@@ -56,6 +60,7 @@ pub struct UpdateProxyRule {
     pub access_list_id: Option<String>,
     pub websocket: Option<bool>,
     pub custom_headers: Option<String>,
+    pub upstream_targets: Option<String>,
     pub sort_order: Option<i32>,
 }
 

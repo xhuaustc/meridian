@@ -8,11 +8,13 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Dialog, ConfirmDialog } from '../components/ui/Dialog';
 import { Toggle } from '../components/ui/Toggle';
+import { SkeletonCards } from '../components/ui/Skeleton';
 import { save } from '@tauri-apps/plugin-dialog';
 import { useCertStore } from '../stores/cert-store';
 import { useDnsCredentialStore } from '../stores/dns-credential-store';
 import { useProxyStore } from '../stores/proxy-store';
 import { useToastStore } from '../stores/toast-store';
+import { useApiError } from '../hooks/useApiError';
 import { exportCertificate } from '../lib/api';
 import { cn } from '../lib/utils';
 import type { Certificate, DnsCredential } from '../types';
@@ -48,10 +50,11 @@ function daysUntil(dateStr: string): number {
 
 export function CertsPage() {
   const { t } = useTranslation('common');
-  const { certificates, fetchCertificates, generateSelfSigned, importCertificate, requestAcmeCert, deleteCertificate } = useCertStore();
+  const { certificates, loading, fetchCertificates, generateSelfSigned, importCertificate, requestAcmeCert, deleteCertificate } = useCertStore();
   const { credentials, fetchCredentials, createCredential, deleteCredential, testCredential } = useDnsCredentialStore();
   const { proxies } = useProxyStore();
   const addToast = useToastStore((s) => s.addToast);
+  const formatError = useApiError();
 
   const [activeTab, setActiveTab] = useState<'certs' | 'dns'>('certs');
 
@@ -113,7 +116,7 @@ export function CertsPage() {
       addToast('success', t('certs.generateSuccess'));
       setShowGenerate(false);
       setGenName(''); setGenDomain(''); setGenDays('365');
-    } catch (e) { addToast('error', String(e)); }
+    } catch (e) { addToast('error', formatError(e)); }
   };
 
   const handleUpload = async () => {
@@ -123,7 +126,7 @@ export function CertsPage() {
       addToast('success', t('certs.uploadSuccess'));
       setShowUpload(false);
       setUpName(''); setUpDomain(''); setUpCert(''); setUpKey(''); setUpExpires('');
-    } catch (e) { addToast('error', String(e)); }
+    } catch (e) { addToast('error', formatError(e)); }
   };
 
   const handleAcmeRequest = async () => {
@@ -134,7 +137,7 @@ export function CertsPage() {
       setShowAcme(false);
       setAcmeDomains(''); setAcmeCredId(''); setAcmeEmail(''); setAcmeAutoRenew(true);
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
   };
 
@@ -143,7 +146,7 @@ export function CertsPage() {
     try {
       await deleteCertificate(deleteTarget.id);
       addToast('success', t('certs.deleteSuccess'));
-    } catch (e) { addToast('error', String(e)); }
+    } catch (e) { addToast('error', formatError(e)); }
     setDeleteTarget(null);
   };
 
@@ -159,7 +162,7 @@ export function CertsPage() {
       await exportCertificate(cert.id, path);
       addToast('success', t('certs.exportSuccess'));
     } catch (e) {
-      addToast('error', String(e));
+      addToast('error', formatError(e));
     }
   };
 
@@ -172,7 +175,7 @@ export function CertsPage() {
       addToast('success', t('dns.createSuccess'));
       setShowDnsForm(false);
       setDnsName(''); setDnsProvider('cloudflare'); setDnsFields({});
-    } catch (e) { addToast('error', String(e)); }
+    } catch (e) { addToast('error', formatError(e)); }
   };
 
   const handleDnsDelete = async () => {
@@ -180,7 +183,7 @@ export function CertsPage() {
     try {
       await deleteCredential(dnsDeleteTarget.id);
       addToast('success', t('dns.deleteSuccess'));
-    } catch (e) { addToast('error', String(e)); }
+    } catch (e) { addToast('error', formatError(e)); }
     setDnsDeleteTarget(null);
   };
 
@@ -193,7 +196,7 @@ export function CertsPage() {
       } else {
         addToast('error', result.message);
       }
-    } catch (e) { addToast('error', String(e)); }
+    } catch (e) { addToast('error', formatError(e)); }
     setTestingId(null);
   };
 
@@ -259,7 +262,9 @@ export function CertsPage() {
             </div>
           </div>
 
-          {certificates.length === 0 ? (
+          {loading && certificates.length === 0 ? (
+            <SkeletonCards count={3} />
+          ) : certificates.length === 0 ? (
             <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] py-16 flex flex-col items-center justify-center">
               <Lock className="w-10 h-10 text-text-tertiary mb-3" />
               <p className="text-[13px] font-medium text-text-secondary">{t('certs.emptyTitle')}</p>

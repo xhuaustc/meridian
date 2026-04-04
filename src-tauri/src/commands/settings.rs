@@ -10,7 +10,7 @@ pub async fn get_setting(
     key: String,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     settings_repo::get(&db, &key)
 }
 
@@ -20,19 +20,19 @@ pub async fn set_setting(
     value: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     settings_repo::set(&db, &key, &value)
 }
 
 #[tauri::command]
 pub async fn list_settings(state: State<'_, AppState>) -> Result<Vec<AppSetting>, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     settings_repo::list_all(&db)
 }
 
 #[tauri::command]
 pub async fn export_data(state: State<'_, AppState>) -> Result<ExportData, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     let proxy_rules = proxy_repo::list_all(&db)?;
     let certificates = cert_repo::list_all(&db)?;
     let access_lists = access_repo::list_all_lists(&db)?;
@@ -55,7 +55,7 @@ pub async fn import_data(
     data: ExportData,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
 
     // Import in a transaction
     db.execute_batch("BEGIN TRANSACTION;")?;

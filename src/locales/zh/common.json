@@ -1,10 +1,35 @@
 {
+  "errors": {
+    "DB_ERROR": "数据库错误",
+    "IO_ERROR": "文件读写错误",
+    "JSON_ERROR": "数据格式错误",
+    "CERT_ERROR": "证书错误",
+    "NGINX_ERROR": "引擎错误",
+    "CONFIG_ERROR": "配置错误",
+    "CONFLICT": "资源冲突",
+    "NOT_FOUND": "资源不存在",
+    "VALIDATION_NAME": "名称格式不正确（1-100个字符）",
+    "VALIDATION_PORT": "监听端口必须在 1-65535 之间",
+    "VALIDATION_UPSTREAM_PORT": "上游端口必须在 1-65535 之间",
+    "VALIDATION_DOMAIN": "HTTP 代理类型必须指定域名",
+    "VALIDATION_PROXY_TYPE": "代理类型无效",
+    "VALIDATION_TLS_MODE": "TLS 模式无效",
+    "VALIDATION_CERTIFICATE": "TLS 终止模式需要选择证书",
+    "VALIDATION_WEBSOCKET": "WebSocket 仅适用于 HTTP 代理",
+    "VALIDATION_PATH_PREFIX": "路径前缀必须以 / 开头",
+    "VALIDATION_IP": "IP 地址或 CIDR 格式无效",
+    "VALIDATION_HOSTNAME": "主机名格式无效",
+    "VALIDATION_ERROR": "输入验证失败",
+    "DNS_ERROR": "DNS 提供商操作失败",
+    "ACME_ERROR": "证书自动申请失败",
+    "UNKNOWN": "操作失败"
+  },
   "app": {
     "name": "轻渡 · Meridian"
   },
   "nav": {
     "proxyManagement": "代理管理",
-    "dashboard": "仪表盘",
+    "dashboard": "概览",
     "addProxy": "添加代理",
     "monitor": "监控",
     "security": "安全",
@@ -21,10 +46,11 @@
     "start": "启动",
     "stop": "停止",
     "reload": "重载",
-    "configInvalid": "配置无效"
+    "configInvalid": "配置无效",
+    "stoppedUnexpectedly": "引擎意外停止，请检查错误日志"
   },
   "dashboard": {
-    "title": "代理规则",
+    "title": "概览",
     "addProxy": "添加代理",
     "import": "导入",
     "searchPlaceholder": "搜索规则名称、域名、端口...",
@@ -35,10 +61,10 @@
     "filterUdp": "UDP",
     "activeProxies": "活跃代理",
     "totalRules": "共 {{count}} 条规则",
-    "httpHttps": "HTTP / HTTPS",
-    "layer7": "七层代理",
-    "tcpUdp": "TCP / UDP",
-    "layer4": "四层代理",
+    "accessLists": "访问控制",
+    "accessListsDesc": "{{count}} 条列表",
+    "hostEntries": "域名解析",
+    "hostEntriesDesc": "{{count}} 条记录",
     "certificates": "证书",
     "expiringSoon": "{{count}} 即将到期",
     "colName": "名称",
@@ -56,10 +82,27 @@
     "delete": "删除",
     "emptyTitle": "暂无代理规则",
     "emptyDesc": "点击「添加代理」创建第一条规则",
+    "onboardingTitle": "欢迎使用轻渡",
+    "onboardingDesc": "几分钟内即可配置第一条代理规则，从这里开始：",
+    "onboardingStep1": "创建代理",
+    "onboardingStep1Desc": "将 HTTP、HTTPS、TCP 或 UDP 流量转发到你的服务",
+    "onboardingStep2": "配置 TLS",
+    "onboardingStep2Desc": "生成或导入证书以启用 HTTPS",
+    "onboardingStep3": "映射域名",
+    "onboardingStep3Desc": "添加本地 DNS 解析条目",
+    "noResults": "没有匹配的规则",
     "confirmDelete": "确定删除规则「{{name}}」？此操作不可撤销。",
     "deleteSuccess": "规则已删除",
     "toggleSuccess": "规则状态已更新",
-    "copySuccess": "规则已复制"
+    "copySuccess": "规则已复制",
+    "selectAll": "全选",
+    "selected": "已选 {{count}} 条",
+    "batchEnable": "启用",
+    "batchDisable": "禁用",
+    "batchDelete": "删除",
+    "batchDeleteConfirm": "确定删除 {{count}} 条选中的规则？此操作不可撤销。",
+    "batchToggleSuccess": "已更新 {{count}} 条规则",
+    "batchDeleteSuccess": "已删除 {{count}} 条规则"
   },
   "proxyForm": {
     "createTitle": "添加代理规则",
@@ -105,7 +148,14 @@
     "portConflictWarning": "端口冲突：{{message}}",
     "nameRequired": "请输入规则名称",
     "portRequired": "请输入监听端口",
-    "upstreamRequired": "请输入目标地址和端口"
+    "upstreamRequired": "请输入目标地址和端口",
+    "customHeaders": "自定义请求头",
+    "customHeadersDesc": "添加额外的 HTTP 请求头，将通过 proxy_set_header 传递给上游服务",
+    "addHeader": "添加请求头",
+    "multiUpstream": "负载均衡（多上游目标）",
+    "multiUpstreamDesc": "将流量分发到多个上游服务器。权重控制每个服务器接收的请求比例。",
+    "addTarget": "添加目标",
+    "weight": "权重"
   },
   "certs": {
     "title": "证书管理",
@@ -307,5 +357,9 @@
     "loading": "加载中...",
     "error": "操作失败",
     "success": "操作成功"
+  },
+  "notFound": {
+    "message": "页面不存在",
+    "backHome": "返回首页"
   }
 }

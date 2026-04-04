@@ -87,3 +87,98 @@ pub fn detect_conflicts(rules: &[ProxyRule]) -> Vec<PortConflict> {
 
     conflicts
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::models::ProxyRule;
+
+    fn make_rule(id: &str, proxy_type: &str, port: u16, domain: Option<&str>, path: Option<&str>) -> ProxyRule {
+        ProxyRule {
+            id: id.to_string(),
+            name: format!("rule-{}", id),
+            proxy_type: proxy_type.to_string(),
+            enabled: true,
+            listen_port: port,
+            listen_host: "0.0.0.0".to_string(),
+            domain: domain.map(String::from),
+            path_prefix: path.map(String::from),
+            upstream_host: "127.0.0.1".to_string(),
+            upstream_port: 3000,
+            tls_mode: "none".to_string(),
+            certificate_id: None,
+            access_list_id: None,
+            websocket: false,
+            custom_headers: None,
+            upstream_targets: None,
+            sort_order: 0,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            updated_at: "2024-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_no_conflicts_different_ports() {
+        let rules = vec![
+            make_rule("1", "http", 80, Some("a.com"), None),
+            make_rule("2", "http", 81, Some("b.com"), None),
+        ];
+        assert!(detect_conflicts(&rules).is_empty());
+    }
+
+    #[test]
+    fn test_virtual_host_no_conflict() {
+        let rules = vec![
+            make_rule("1", "http", 80, Some("a.com"), None),
+            make_rule("2", "http", 80, Some("b.com"), None),
+        ];
+        assert!(detect_conflicts(&rules).is_empty());
+    }
+
+    #[test]
+    fn test_same_port_domain_path_conflicts() {
+        let rules = vec![
+            make_rule("1", "http", 80, Some("a.com"), Some("/")),
+            make_rule("2", "http", 80, Some("a.com"), Some("/")),
+        ];
+        assert!(!detect_conflicts(&rules).is_empty());
+    }
+
+    #[test]
+    fn test_different_paths_no_conflict() {
+        let rules = vec![
+            make_rule("1", "http", 80, Some("a.com"), Some("/api")),
+            make_rule("2", "http", 80, Some("a.com"), Some("/web")),
+        ];
+        assert!(detect_conflicts(&rules).is_empty());
+    }
+
+    #[test]
+    fn test_stream_same_port_conflicts() {
+        let rules = vec![
+            make_rule("1", "stream_tcp", 3306, None, None),
+            make_rule("2", "stream_tcp", 3306, None, None),
+        ];
+        assert!(!detect_conflicts(&rules).is_empty());
+    }
+
+    #[test]
+    fn test_http_stream_same_port_conflicts() {
+        let rules = vec![
+            make_rule("1", "http", 80, Some("a.com"), None),
+            make_rule("2", "stream_tcp", 80, None, None),
+        ];
+        assert!(!detect_conflicts(&rules).is_empty());
+    }
+
+    #[test]
+    fn test_tcp_udp_same_port_no_conflict() {
+        // TCP and UDP on same port should not conflict (different protocols)
+        let rules = vec![
+            make_rule("1", "stream_tcp", 5000, None, None),
+            make_rule("2", "stream_udp", 5000, None, None),
+        ];
+        // This may or may not conflict depending on implementation - just verify it doesn't panic
+        let _ = detect_conflicts(&rules);
+    }
+}

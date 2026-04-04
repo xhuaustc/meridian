@@ -22,6 +22,7 @@ fn row_to_proxy(row: &rusqlite::Row) -> rusqlite::Result<ProxyRule> {
         access_list_id: row.get("access_list_id")?,
         websocket: row.get::<_, i32>("websocket")? != 0,
         custom_headers: row.get("custom_headers")?,
+        upstream_targets: row.get("upstream_targets")?,
         sort_order: row.get("sort_order")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
@@ -53,8 +54,8 @@ pub fn create(conn: &Connection, input: &CreateProxyRule) -> Result<ProxyRule, A
     let sort_order = input.sort_order.unwrap_or(0);
 
     conn.execute(
-        "INSERT INTO proxy_rules (id, name, proxy_type, enabled, listen_port, listen_host, domain, path_prefix, upstream_host, upstream_port, tls_mode, certificate_id, access_list_id, websocket, custom_headers, sort_order, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+        "INSERT INTO proxy_rules (id, name, proxy_type, enabled, listen_port, listen_host, domain, path_prefix, upstream_host, upstream_port, tls_mode, certificate_id, access_list_id, websocket, custom_headers, upstream_targets, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
         params![
             id,
             input.name,
@@ -70,6 +71,7 @@ pub fn create(conn: &Connection, input: &CreateProxyRule) -> Result<ProxyRule, A
             input.access_list_id,
             websocket,
             input.custom_headers,
+            input.upstream_targets,
             sort_order,
             now,
             now,
@@ -105,9 +107,10 @@ pub fn update(conn: &Connection, id: &str, input: &UpdateProxyRule) -> Result<Pr
     let certificate_id: &Option<String> = &input.certificate_id;
     let access_list_id: &Option<String> = &input.access_list_id;
     let custom_headers: &Option<String> = &input.custom_headers;
+    let upstream_targets: &Option<String> = &input.upstream_targets;
 
     conn.execute(
-        "UPDATE proxy_rules SET name=?1, proxy_type=?2, enabled=?3, listen_port=?4, listen_host=?5, domain=?6, path_prefix=?7, upstream_host=?8, upstream_port=?9, tls_mode=?10, certificate_id=?11, access_list_id=?12, websocket=?13, custom_headers=?14, sort_order=?15, updated_at=?16 WHERE id=?17",
+        "UPDATE proxy_rules SET name=?1, proxy_type=?2, enabled=?3, listen_port=?4, listen_host=?5, domain=?6, path_prefix=?7, upstream_host=?8, upstream_port=?9, tls_mode=?10, certificate_id=?11, access_list_id=?12, websocket=?13, custom_headers=?14, upstream_targets=?15, sort_order=?16, updated_at=?17 WHERE id=?18",
         params![
             name,
             proxy_type,
@@ -123,6 +126,7 @@ pub fn update(conn: &Connection, id: &str, input: &UpdateProxyRule) -> Result<Pr
             access_list_id,
             if websocket { 1 } else { 0 },
             custom_headers,
+            upstream_targets,
             sort_order,
             now,
             id,
@@ -174,6 +178,47 @@ pub fn count_by_type(conn: &Connection) -> Result<HashMap<String, i64>, AppError
         map.insert(ptype, count);
     }
     Ok(map)
+}
+
+/// Batch toggle enabled status for multiple proxy rules.
+pub fn batch_toggle(conn: &Connection, ids: &[String], enabled: bool) -> Result<usize, AppError> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let now = chrono::Utc::now().to_rfc3339();
+    let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{}", i)).collect();
+    let sql = format!(
+        "UPDATE proxy_rules SET enabled = ?{}, updated_at = ?{} WHERE id IN ({})",
+        ids.len() + 1,
+        ids.len() + 2,
+        placeholders.join(",")
+    );
+    let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    for id in ids {
+        param_values.push(Box::new(id.clone()));
+    }
+    param_values.push(Box::new(if enabled { 1i32 } else { 0i32 }));
+    param_values.push(Box::new(now));
+    let params_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+    let affected = conn.execute(&sql, params_refs.as_slice())?;
+    Ok(affected)
+}
+
+/// Batch delete multiple proxy rules.
+pub fn batch_delete(conn: &Connection, ids: &[String]) -> Result<usize, AppError> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{}", i)).collect();
+    let sql = format!(
+        "DELETE FROM proxy_rules WHERE id IN ({})",
+        placeholders.join(",")
+    );
+    let param_values: Vec<Box<dyn rusqlite::types::ToSql>> =
+        ids.iter().map(|id| Box::new(id.clone()) as Box<dyn rusqlite::types::ToSql>).collect();
+    let params_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+    let affected = conn.execute(&sql, params_refs.as_slice())?;
+    Ok(affected)
 }
 
 /// Find proxy rules that reference a given certificate_id.

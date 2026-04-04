@@ -8,13 +8,14 @@ use tracing::{error, info, warn};
 use crate::dns_provider;
 use crate::nginx_manager;
 use crate::store::cert_repo;
+use crate::store::DbPool;
 
 /// Global renewal lock to prevent concurrent renewals.
 static RENEWAL_LOCK: std::sync::LazyLock<TokioMutex<()>> =
     std::sync::LazyLock::new(|| TokioMutex::new(()));
 
-/// Run auto-renewal check. Opens its own DB connection.
-pub async fn auto_renew_check(db_path: &Path, data_dir: &Path) {
+/// Run auto-renewal check using a connection from the pool.
+pub async fn auto_renew_check(pool: &DbPool, data_dir: &Path) {
     let _guard = match RENEWAL_LOCK.try_lock() {
         Ok(g) => g,
         Err(_) => {
@@ -25,10 +26,10 @@ pub async fn auto_renew_check(db_path: &Path, data_dir: &Path) {
 
     info!("Starting auto-renewal check");
 
-    let conn = match Connection::open(db_path) {
+    let conn = match pool.get() {
         Ok(c) => c,
         Err(e) => {
-            error!("Failed to open DB for renewal: {}", e);
+            error!("Failed to get DB connection for renewal: {}", e);
             return;
         }
     };
@@ -189,16 +190,16 @@ async fn renew_single_cert(
 }
 
 /// Spawn the auto-renewal background task.
-pub fn spawn_renewal_task(db_path: PathBuf, data_dir: PathBuf) {
+pub fn spawn_renewal_task(pool: DbPool, data_dir: PathBuf) {
     tauri::async_runtime::spawn(async move {
         // Run initial check after a short delay
         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-        auto_renew_check(&db_path, &data_dir).await;
+        auto_renew_check(&pool, &data_dir).await;
 
         // Then run every 12 hours
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(12 * 60 * 60)).await;
-            auto_renew_check(&db_path, &data_dir).await;
+            auto_renew_check(&pool, &data_dir).await;
         }
     });
 }

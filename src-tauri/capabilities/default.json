@@ -10,7 +10,11 @@
     "autostart:allow-disable",
     "autostart:allow-is-enabled",
     "dialog:default",
+    "fs:default",
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
     "core:window:allow-start-dragging",
-    "core:window:allow-toggle-maximize"
+    "core:window:allow-toggle-maximize",
+    "core:event:allow-emit"
   ]
 }

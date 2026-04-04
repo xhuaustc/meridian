@@ -2,12 +2,39 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Duration;
 
 use chrono::Local;
-use tracing::{error, info};
+use tauri::Emitter;
+use tracing::{error, info, warn};
 
 use crate::error::AppError;
 use crate::store::models::NginxStatus;
+
+static WAS_RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// Spawn a background health check that emits "nginx-status-changed" event when nginx crashes.
+pub fn spawn_health_check(data_dir: PathBuf, app_handle: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(15));
+            let current_status = status(&data_dir);
+            let is_running = current_status.status == "running";
+            let was_running = WAS_RUNNING.swap(is_running, Ordering::Relaxed);
+
+            if was_running && !is_running {
+                warn!("nginx stopped unexpectedly");
+                append_to_error_log(&data_dir, "nginx process stopped unexpectedly");
+                let _ = app_handle.emit("nginx-status-changed", serde_json::json!({
+                    "status": current_status.status,
+                    "error_message": current_status.error_message,
+                }));
+            }
+        }
+    });
+}
 
 /// The nginx binary file name on the current platform.
 #[cfg(windows)]
@@ -98,6 +125,100 @@ pub fn append_to_error_log(data_dir: &Path, message: &str) {
         let ts = Local::now().format("%Y/%m/%d %H:%M:%S");
         let _ = writeln!(file, "{} [meridian] {}", ts, message.trim());
     }
+}
+
+/// Clean up a stale nginx process on startup.
+///
+/// If a PID file exists but the process is no longer running, the stale file is
+/// removed.  If the process *is* still running (left over from a previous
+/// session), we attempt a graceful shutdown (`nginx -s quit`) and, after a
+/// timeout, force-kill the process.
+pub fn cleanup_stale_process(data_dir: &Path) {
+    let pid_file = pid_path(data_dir);
+    let contents = match fs::read_to_string(&pid_file) {
+        Ok(c) => c,
+        Err(_) => return, // No PID file — nothing to clean up.
+    };
+
+    let pid: u32 = match contents.trim().parse() {
+        Ok(p) => p,
+        Err(_) => {
+            info!("Removing unparseable PID file");
+            append_to_error_log(data_dir, "Removing unparseable nginx PID file on startup");
+            let _ = fs::remove_file(&pid_file);
+            return;
+        }
+    };
+
+    if !is_process_running(pid) {
+        info!("Removing stale nginx PID file (pid {} not running)", pid);
+        append_to_error_log(
+            data_dir,
+            &format!("Removed stale nginx PID file on startup (pid {} not running)", pid),
+        );
+        let _ = fs::remove_file(&pid_file);
+        return;
+    }
+
+    // Process is still alive — attempt graceful stop.
+    info!("Found running nginx process (pid {}) from previous session, stopping it", pid);
+    append_to_error_log(
+        data_dir,
+        &format!("Found running nginx process (pid {}) from previous session, attempting graceful stop", pid),
+    );
+
+    if let Ok(nginx) = get_bundled_nginx_path() {
+        let _ = Command::new(&nginx)
+            .arg("-s")
+            .arg("quit")
+            .arg("-c")
+            .arg(config_path(data_dir))
+            .arg("-p")
+            .arg(prefix_path(data_dir))
+            .output();
+    }
+
+    // Wait up to 3 seconds for the process to exit.
+    let mut stopped = false;
+    for _ in 0..6 {
+        thread::sleep(Duration::from_millis(500));
+        if !is_process_running(pid) {
+            stopped = true;
+            break;
+        }
+    }
+
+    if stopped {
+        info!("Stale nginx process (pid {}) stopped gracefully", pid);
+        append_to_error_log(
+            data_dir,
+            &format!("Stale nginx process (pid {}) stopped gracefully on startup", pid),
+        );
+    } else {
+        // Force kill.
+        info!("Stale nginx process (pid {}) did not stop gracefully, force killing", pid);
+        append_to_error_log(
+            data_dir,
+            &format!("Force killing stale nginx process (pid {}) on startup", pid),
+        );
+
+        #[cfg(not(windows))]
+        {
+            let _ = Command::new("kill")
+                .arg("-9")
+                .arg(pid.to_string())
+                .output();
+        }
+        #[cfg(windows)]
+        {
+            let _ = Command::new("taskkill")
+                .args(["/F", "/PID", &pid.to_string()])
+                .output();
+        }
+    }
+
+    // Clean up PID file if it still exists.
+    let _ = fs::remove_file(&pid_file);
 }
 
 /// Read the PID from the nginx pid file, if it exists and the process is running.
@@ -334,9 +455,13 @@ fn get_process_uptime(pid: u32) -> Option<u64> {
 
 #[cfg(windows)]
 fn get_process_uptime(pid: u32) -> Option<u64> {
-    // Use wmic to get process creation date
-    let output = Command::new("wmic")
-        .args(["process", "where", &format!("ProcessId={}", pid), "get", "CreationDate", "/value"])
+    // Use PowerShell Get-Process instead of deprecated wmic
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            &format!("(Get-Process -Id {}).StartTime.ToString('yyyyMMddHHmmss')", pid),
+        ])
         .output()
         .ok()?;
 
@@ -344,27 +469,20 @@ fn get_process_uptime(pid: u32) -> Option<u64> {
         return None;
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Output format: CreationDate=20260404123000.000000+480
-    for line in stdout.lines() {
-        let line = line.trim();
-        if let Some(val) = line.strip_prefix("CreationDate=") {
-            // Parse WMI datetime: YYYYMMDDHHmmss.ffffff+zzz
-            if val.len() >= 14 {
-                let year: i32 = val[0..4].parse().ok()?;
-                let month: u32 = val[4..6].parse().ok()?;
-                let day: u32 = val[6..8].parse().ok()?;
-                let hour: u32 = val[8..10].parse().ok()?;
-                let min: u32 = val[10..12].parse().ok()?;
-                let sec: u32 = val[12..14].parse().ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if stdout.len() >= 14 {
+        let year: i32 = stdout[0..4].parse().ok()?;
+        let month: u32 = stdout[4..6].parse().ok()?;
+        let day: u32 = stdout[6..8].parse().ok()?;
+        let hour: u32 = stdout[8..10].parse().ok()?;
+        let min: u32 = stdout[10..12].parse().ok()?;
+        let sec: u32 = stdout[12..14].parse().ok()?;
 
-                let created = chrono::NaiveDate::from_ymd_opt(year, month, day)?
-                    .and_hms_opt(hour, min, sec)?;
-                let now = chrono::Local::now().naive_local();
-                let duration = now.signed_duration_since(created);
-                return Some(duration.num_seconds().max(0) as u64);
-            }
-        }
+        let created = chrono::NaiveDate::from_ymd_opt(year, month, day)?
+            .and_hms_opt(hour, min, sec)?;
+        let now = chrono::Local::now().naive_local();
+        let duration = now.signed_duration_since(created);
+        return Some(duration.num_seconds().max(0) as u64);
     }
     None
 }

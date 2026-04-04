@@ -13,7 +13,6 @@ mod validators;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use rusqlite::Connection;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -99,7 +98,7 @@ fn detect_os_language() -> String {
 /// Read the language setting from the database, defaulting to OS locale.
 fn get_language(state: &AppState) -> String {
     state
-        .lock_db()
+        .get_conn()
         .ok()
         .and_then(|db| store::settings_repo::get(&db, "language").ok().flatten())
         .unwrap_or_else(detect_os_language)
@@ -127,18 +126,18 @@ fn sync_tray_menu(data_dir: &Path, items: &TrayMenuItems, lang: &str) {
 }
 
 pub struct AppState {
-    pub db: Mutex<Connection>,
+    pub pool: store::DbPool,
     pub data_dir: PathBuf,
     pub tray_items: Mutex<Option<TrayMenuItems>>,
 }
 
 impl AppState {
-    /// Helper to lock the database mutex, converting the PoisonError into AppError.
-    pub fn lock_db(&self) -> Result<std::sync::MutexGuard<'_, Connection>, AppError> {
-        self.db.lock().map_err(|e| {
+    /// Get a connection from the pool.
+    pub fn get_conn(&self) -> Result<store::PooledConn, AppError> {
+        self.pool.get().map_err(|e| {
             AppError::Database(rusqlite::Error::SqliteFailure(
                 rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_ERROR),
-                Some(format!("Lock poisoned: {}", e)),
+                Some(format!("Pool error: {}", e)),
             ))
         })
     }
@@ -204,13 +203,13 @@ pub fn run() {
             std::fs::create_dir_all(nginx_dir.join("certs"))
                 .expect("Failed to create certs directory");
 
-            // Initialize database
+            // Initialize database pool
             let db_path = app_data_dir.join("meridian.db");
-            let conn = store::init_database(&db_path)
-                .expect("Failed to initialize database");
+            let pool = store::init_pool(&db_path)
+                .expect("Failed to initialize database pool");
 
             let state = AppState {
-                db: Mutex::new(conn),
+                pool: pool.clone(),
                 data_dir: app_data_dir.clone(),
                 tray_items: Mutex::new(None),
             };
@@ -338,17 +337,20 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Clean up any stale nginx process from a previous session
+            nginx_manager::cleanup_stale_process(&app_data_dir);
+
             // Auto-start engine if setting is enabled
             let auto_start = {
                 let app_state = app.state::<AppState>();
-                let db = app_state.lock_db().ok();
-                db.and_then(|d| store::settings_repo::get(&d, "auto_start_engine").ok().flatten())
+                app_state.get_conn().ok()
+                    .and_then(|db| store::settings_repo::get(&db, "auto_start_engine").ok().flatten())
                     .map_or(false, |v| v == "true")
             };
             if auto_start {
                 info!("Auto-starting engine");
                 let app_state = app.state::<AppState>();
-                if let Ok(db) = app_state.lock_db() {
+                if let Ok(db) = app_state.get_conn() {
                     let rules = store::proxy_repo::list_enabled(&db).unwrap_or_default();
                     let certs = store::cert_repo::list_all(&db).unwrap_or_default();
                     let access_lists_raw = store::access_repo::list_all_lists(&db).unwrap_or_default();
@@ -370,7 +372,7 @@ pub fn run() {
             // Log retention cleanup
             {
                 let app_state = app.state::<AppState>();
-                let retention_days = app_state.lock_db().ok()
+                let retention_days = app_state.get_conn().ok()
                     .and_then(|db| store::settings_repo::get(&db, "log_retention_days").ok().flatten())
                     .and_then(|v| v.parse::<u64>().ok())
                     .unwrap_or(7);
@@ -380,11 +382,30 @@ pub fn run() {
 
             // Spawn auto-renewal background task
             acme_client::renewal::spawn_renewal_task(
-                db_path.clone(),
+                pool.clone(),
+                app_data_dir.clone(),
+            );
+
+            // Spawn nginx health check
+            nginx_manager::spawn_health_check(
+                app_data_dir.clone(),
+                app.handle().clone(),
+            );
+
+            // Spawn scheduled log cleanup
+            commands::logs::spawn_log_cleanup_task(
+                pool.clone(),
                 app_data_dir.clone(),
             );
 
             info!("Meridian initialized. Data dir: {:?}", app_data_dir);
+
+            // Enforce minimum window size programmatically (config values may not
+            // be applied on all platforms).
+            if let Some(window) = app.get_webview_window("main") {
+                use tauri::LogicalSize;
+                let _ = window.set_min_size(Some(LogicalSize::new(900.0, 600.0)));
+            }
 
             #[cfg(target_os = "macos")]
             if let Some(window) = app.get_webview_window("main") {
@@ -426,6 +447,8 @@ pub fn run() {
             commands::proxy::update_proxy,
             commands::proxy::delete_proxy,
             commands::proxy::toggle_proxy,
+            commands::proxy::batch_toggle_proxies,
+            commands::proxy::batch_delete_proxies,
             // Certificate commands
             commands::cert::list_certificates,
             commands::cert::get_certificate,

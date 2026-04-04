@@ -1,10 +1,35 @@
 {
+  "errors": {
+    "DB_ERROR": "Database error",
+    "IO_ERROR": "File I/O error",
+    "JSON_ERROR": "Data format error",
+    "CERT_ERROR": "Certificate error",
+    "NGINX_ERROR": "Engine error",
+    "CONFIG_ERROR": "Configuration error",
+    "CONFLICT": "Resource conflict",
+    "NOT_FOUND": "Resource not found",
+    "VALIDATION_NAME": "Name must be 1-100 characters",
+    "VALIDATION_PORT": "Listen port must be 1-65535",
+    "VALIDATION_UPSTREAM_PORT": "Upstream port must be 1-65535",
+    "VALIDATION_DOMAIN": "Domain is required for HTTP proxy",
+    "VALIDATION_PROXY_TYPE": "Invalid proxy type",
+    "VALIDATION_TLS_MODE": "Invalid TLS mode",
+    "VALIDATION_CERTIFICATE": "Certificate required for TLS termination",
+    "VALIDATION_WEBSOCKET": "WebSocket only valid for HTTP proxy",
+    "VALIDATION_PATH_PREFIX": "Path prefix must start with /",
+    "VALIDATION_IP": "Invalid IP address or CIDR",
+    "VALIDATION_HOSTNAME": "Invalid hostname format",
+    "VALIDATION_ERROR": "Validation failed",
+    "DNS_ERROR": "DNS provider operation failed",
+    "ACME_ERROR": "Certificate auto-request failed",
+    "UNKNOWN": "Operation failed"
+  },
   "app": {
     "name": "Meridian"
   },
   "nav": {
     "proxyManagement": "Proxy Management",
-    "dashboard": "Dashboard",
+    "dashboard": "Overview",
     "addProxy": "Add Proxy",
     "monitor": "Monitor",
     "security": "Security",
@@ -21,10 +46,11 @@
     "start": "Start",
     "stop": "Stop",
     "reload": "Reload",
-    "configInvalid": "Config Invalid"
+    "configInvalid": "Config Invalid",
+    "stoppedUnexpectedly": "Engine stopped unexpectedly. Check error logs."
   },
   "dashboard": {
-    "title": "Proxy Rules",
+    "title": "Overview",
     "addProxy": "Add Proxy",
     "import": "Import",
     "searchPlaceholder": "Search by name, domain, port...",
@@ -35,10 +61,10 @@
     "filterUdp": "UDP",
     "activeProxies": "Active Proxies",
     "totalRules": "{{count}} rules total",
-    "httpHttps": "HTTP / HTTPS",
-    "layer7": "Layer 7 proxies",
-    "tcpUdp": "TCP / UDP",
-    "layer4": "Layer 4 proxies",
+    "accessLists": "Access Control",
+    "accessListsDesc": "{{count}} lists",
+    "hostEntries": "DNS Hosts",
+    "hostEntriesDesc": "{{count}} entries",
     "certificates": "Certificates",
     "expiringSoon": "{{count}} expiring soon",
     "colName": "Name",
@@ -56,10 +82,27 @@
     "delete": "Delete",
     "emptyTitle": "No proxy rules yet",
     "emptyDesc": "Click \"Add Proxy\" to create your first rule",
+    "onboardingTitle": "Welcome to Meridian",
+    "onboardingDesc": "Set up your first proxy rule in minutes. Here's how to get started:",
+    "onboardingStep1": "Create a Proxy",
+    "onboardingStep1Desc": "Route HTTP, HTTPS, TCP or UDP traffic to your services",
+    "onboardingStep2": "Set Up TLS",
+    "onboardingStep2Desc": "Generate or import certificates for HTTPS",
+    "onboardingStep3": "Map Domains",
+    "onboardingStep3Desc": "Add local DNS entries for your domains",
+    "noResults": "No rules match your filter",
     "confirmDelete": "Delete rule \"{{name}}\"? This cannot be undone.",
     "deleteSuccess": "Rule deleted",
     "toggleSuccess": "Rule status updated",
-    "copySuccess": "Rule duplicated"
+    "copySuccess": "Rule duplicated",
+    "selectAll": "Select all",
+    "selected": "{{count}} selected",
+    "batchEnable": "Enable",
+    "batchDisable": "Disable",
+    "batchDelete": "Delete",
+    "batchDeleteConfirm": "Delete {{count}} selected rules? This cannot be undone.",
+    "batchToggleSuccess": "{{count}} rules updated",
+    "batchDeleteSuccess": "{{count}} rules deleted"
   },
   "proxyForm": {
     "createTitle": "Add Proxy Rule",
@@ -105,7 +148,14 @@
     "portConflictWarning": "Port conflict: {{message}}",
     "nameRequired": "Rule name is required",
     "portRequired": "Listen port is required",
-    "upstreamRequired": "Target host and port are required"
+    "upstreamRequired": "Target host and port are required",
+    "customHeaders": "Custom Headers",
+    "customHeadersDesc": "Add extra HTTP headers forwarded to the upstream via proxy_set_header",
+    "addHeader": "Add Header",
+    "multiUpstream": "Load Balancing (multiple targets)",
+    "multiUpstreamDesc": "Distribute traffic across multiple upstream servers. Weight controls the proportion of requests each server receives.",
+    "addTarget": "Add Target",
+    "weight": "Weight"
   },
   "certs": {
     "title": "Certificate Management",
@@ -307,5 +357,9 @@
     "loading": "Loading...",
     "error": "Operation failed",
     "success": "Operation succeeded"
+  },
+  "notFound": {
+    "message": "Page not found",
+    "backHome": "Back to Home"
   }
 }

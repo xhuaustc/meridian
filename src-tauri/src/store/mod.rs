@@ -14,7 +14,43 @@ use tracing::info;
 
 use crate::error::AppError;
 
-/// Initialize database at the given path and run migrations.
+pub type DbPool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
+pub type PooledConn = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
+
+/// Initialize database pool at the given path, run migrations, and return a connection pool.
+pub fn init_pool(db_path: &Path) -> Result<DbPool, AppError> {
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // Run WAL and migrations on a direct connection first
+    {
+        let conn = Connection::open(db_path)?;
+        conn.execute_batch("PRAGMA journal_mode=WAL;")?;
+        conn.execute_batch("PRAGMA foreign_keys=ON;")?;
+        run_migrations(&conn)?;
+    }
+
+    let manager = r2d2_sqlite::SqliteConnectionManager::file(db_path)
+        .with_init(|conn| {
+            conn.execute_batch("PRAGMA foreign_keys=ON;")?;
+            Ok(())
+        });
+
+    let pool = r2d2::Pool::builder()
+        .max_size(8)
+        .build(manager)
+        .map_err(|e| AppError::Database(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_ERROR),
+            Some(format!("Failed to create connection pool: {}", e)),
+        )))?;
+
+    info!("Database pool initialized at {:?}", db_path);
+    Ok(pool)
+}
+
+/// Initialize database at the given path and run migrations (legacy single-connection).
+#[allow(dead_code)]
 pub fn init_database(db_path: &Path) -> Result<Connection, AppError> {
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -141,6 +177,20 @@ fn run_migrations(conn: &Connection) -> Result<(), AppError> {
             "ALTER TABLE certificates ADD COLUMN status TEXT NOT NULL DEFAULT 'ready';",
         )?;
         info!("Migrated certificates table with status column");
+    }
+
+    // Add upstream_targets column for multi-upstream load balancing
+    let proxy_cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(proxy_rules)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if !proxy_cols.iter().any(|c| c == "upstream_targets") {
+        conn.execute_batch(
+            "ALTER TABLE proxy_rules ADD COLUMN upstream_targets TEXT;",
+        )?;
+        info!("Migrated proxy_rules table with upstream_targets column");
     }
 
     info!("Database migrations complete");

@@ -12,7 +12,7 @@ use crate::AppState;
 
 #[tauri::command]
 pub async fn list_certificates(state: State<'_, AppState>) -> Result<Vec<Certificate>, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     cert_repo::list_all(&db)
 }
 
@@ -21,7 +21,7 @@ pub async fn get_certificate(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<Certificate, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     cert_repo::get_by_id(&db, &id)
 }
 
@@ -36,7 +36,7 @@ pub async fn generate_self_signed_cert(
 
     let days = validity_days.unwrap_or(365);
     let create_cert = cert_manager::generate_self_signed(&state.data_dir, &name, &domain, days)?;
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     cert_repo::create(&db, &create_cert)
 }
 
@@ -59,7 +59,7 @@ pub async fn import_certificate(
         &key_pem,
         &expires_at,
     )?;
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     cert_repo::create(&db, &create_cert)
 }
 
@@ -68,7 +68,7 @@ pub async fn delete_certificate(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
 
     // Check for referencing proxy rules (Fix 2)
     let referencing = proxy_repo::find_by_certificate(&db, &id)?;
@@ -96,7 +96,7 @@ pub async fn export_certificate(
     save_path: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     let cert = cert_repo::get_by_id(&db, &id)?;
     drop(db);
 
@@ -143,6 +143,6 @@ pub async fn check_expiring_certs(
     state: State<'_, AppState>,
 ) -> Result<Vec<Certificate>, AppError> {
     let days = within_days.unwrap_or(30);
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     cert_repo::get_expiring(&db, days)
 }

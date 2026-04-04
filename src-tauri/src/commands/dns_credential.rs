@@ -36,7 +36,7 @@ impl DnsCredentialMasked {
 pub async fn list_dns_credentials(
     state: State<'_, AppState>,
 ) -> Result<Vec<DnsCredentialMasked>, AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     let creds = dns_credential_repo::list_all(&db)?;
     Ok(creds.into_iter().map(DnsCredentialMasked::from).collect())
 }
@@ -61,7 +61,7 @@ pub async fn create_dns_credential(
         credentials_json,
     };
 
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     dns_credential_repo::create(&db, &input)
 }
 
@@ -80,13 +80,13 @@ pub async fn update_dns_credential(
 
     // If updating credentials, validate against the existing provider
     if let Some(ref cj) = credentials_json {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
         let existing = dns_credential_repo::get_by_id(&db, &id)?;
         dns_provider::validate_credentials(&existing.provider, cj)?;
         return dns_credential_repo::update(&db, &id, name.as_deref(), Some(cj));
     }
 
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
     dns_credential_repo::update(&db, &id, name.as_deref(), credentials_json.as_deref())
 }
 
@@ -95,7 +95,7 @@ pub async fn delete_dns_credential(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let db = state.lock_db()?;
+    let db = state.get_conn()?;
 
     // Check if any ACME certificates reference this credential
     let referencing = cert_repo::find_by_dns_credential(&db, &id)?;
@@ -126,7 +126,7 @@ pub async fn test_dns_credential(
     state: State<'_, AppState>,
 ) -> Result<TestResult, AppError> {
     let cred = {
-        let db = state.lock_db()?;
+        let db = state.get_conn()?;
         dns_credential_repo::get_by_id(&db, &id)?
     };
 
