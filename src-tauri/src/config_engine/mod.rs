@@ -1,4 +1,5 @@
 pub mod conflict;
+pub mod error_pages;
 pub mod http_config;
 pub mod main_config;
 pub mod stream_config;
@@ -50,6 +51,9 @@ pub fn generate_all_configs(
     fs::create_dir_all(&conf_d)?;
     fs::create_dir_all(&stream_d)?;
     fs::create_dir_all(&logs_dir)?;
+
+    // Write custom error pages
+    error_pages::write_error_pages(data_dir)?;
 
     // Detect conflicts
     let conflicts = conflict::detect_conflicts(rules);

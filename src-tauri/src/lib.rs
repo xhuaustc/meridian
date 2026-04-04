@@ -83,10 +83,14 @@ fn detect_os_language() -> String {
         }
     }
     // Use Windows GetUserDefaultLocaleName via PowerShell
-    if let Ok(output) = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-Command", "[System.Globalization.CultureInfo]::CurrentUICulture.Name"])
-        .output()
+    let mut cmd = std::process::Command::new("powershell");
+    cmd.args(["-NoProfile", "-Command", "[System.Globalization.CultureInfo]::CurrentUICulture.Name"]);
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    if let Ok(output) = cmd.output() {
         let locale = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
         if locale.starts_with("zh") {
             return "zh".to_string();

@@ -13,6 +13,20 @@ use tracing::{error, info, warn};
 use crate::error::AppError;
 use crate::store::models::NginxStatus;
 
+/// Create a Command for the nginx binary with platform-specific settings.
+/// On Windows, sets CREATE_NO_WINDOW to prevent console window flashing.
+fn nginx_command(nginx_path: &Path) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(nginx_path);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 static WAS_RUNNING: AtomicBool = AtomicBool::new(false);
 
 /// Spawn a background health check that emits "nginx-status-changed" event when nginx crashes.
@@ -79,8 +93,15 @@ pub fn get_bundled_nginx_path() -> Result<PathBuf, AppError> {
 
     // 3. PATH lookup
     let which_cmd = if cfg!(windows) { "where" } else { "which" };
-    let output = Command::new(which_cmd)
-        .arg("nginx")
+    let mut cmd = Command::new(which_cmd);
+    cmd.arg("nginx");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let output = cmd
         .output()
         .map_err(|e| AppError::Nginx(format!("Failed to search PATH for nginx: {}", e)))?;
 
@@ -168,7 +189,7 @@ pub fn cleanup_stale_process(data_dir: &Path) {
     );
 
     if let Ok(nginx) = get_bundled_nginx_path() {
-        let _ = Command::new(&nginx)
+        let _ = nginx_command(&nginx)
             .arg("-s")
             .arg("quit")
             .arg("-c")
@@ -211,8 +232,11 @@ pub fn cleanup_stale_process(data_dir: &Path) {
         }
         #[cfg(windows)]
         {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
             let _ = Command::new("taskkill")
                 .args(["/F", "/PID", &pid.to_string()])
+                .creation_flags(CREATE_NO_WINDOW)
                 .output();
         }
     }
@@ -246,8 +270,11 @@ fn is_process_running(pid: u32) -> bool {
 
 #[cfg(windows)]
 fn is_process_running(pid: u32) -> bool {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
     Command::new("tasklist")
         .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map(|o| {
             o.status.success()
@@ -280,7 +307,7 @@ pub fn start(data_dir: &Path) -> Result<(), AppError> {
         )));
     }
 
-    let output = Command::new(&nginx)
+    let output = nginx_command(&nginx)
         .arg("-c")
         .arg(&conf)
         .arg("-p")
@@ -307,7 +334,7 @@ pub fn stop(data_dir: &Path) -> Result<(), AppError> {
 
     let conf = config_path(data_dir);
 
-    let output = Command::new(&nginx)
+    let output = nginx_command(&nginx)
         .arg("-s")
         .arg("quit")
         .arg("-c")
@@ -344,7 +371,7 @@ pub fn reload(data_dir: &Path) -> Result<(), AppError> {
 
     let conf = config_path(data_dir);
 
-    let output = Command::new(&nginx)
+    let output = nginx_command(&nginx)
         .arg("-s")
         .arg("reload")
         .arg("-c")
@@ -371,7 +398,7 @@ pub fn test_config(data_dir: &Path) -> Result<(bool, String), AppError> {
     let nginx = get_bundled_nginx_path()?;
     let conf = config_path(data_dir);
 
-    let output = Command::new(&nginx)
+    let output = nginx_command(&nginx)
         .arg("-t")
         .arg("-c")
         .arg(&conf)
@@ -403,6 +430,9 @@ pub fn status(data_dir: &Path) -> NginxStatus {
     };
 
     let error_message = if running {
+        None
+    } else if !config_path(data_dir).exists() {
+        // Config not generated yet (first launch) — don't spawn nginx to test
         None
     } else {
         // Check if config is valid to provide error context
@@ -455,6 +485,8 @@ fn get_process_uptime(pid: u32) -> Option<u64> {
 
 #[cfg(windows)]
 fn get_process_uptime(pid: u32) -> Option<u64> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
     // Use PowerShell Get-Process instead of deprecated wmic
     let output = Command::new("powershell")
         .args([
@@ -462,6 +494,7 @@ fn get_process_uptime(pid: u32) -> Option<u64> {
             "-Command",
             &format!("(Get-Process -Id {}).StartTime.ToString('yyyyMMddHHmmss')", pid),
         ])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .ok()?;
 

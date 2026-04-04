@@ -89,6 +89,15 @@ pub fn generate_server_block(
 
     out.push('\n');
 
+    // Custom error pages
+    out.push_str("    proxy_intercept_errors on;\n");
+    out.push_str("    error_page 502 /502.html;\n");
+    let html_dir = data_dir.join("nginx/html");
+    out.push_str(&format!(
+        "    location = /502.html {{\n        root \"{}\";\n        internal;\n    }}\n\n",
+        nginx_path(&html_dir)
+    ));
+
     // Access list (applied at server level if all rules share the same access list)
     if let Some(acl_id) = &first.access_list_id {
         if let Some((acl, acl_rules)) = access_lists.iter().find(|(l, _)| &l.id == acl_id) {
