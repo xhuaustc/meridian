@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- T2: Large needle + symmetric dual lines -->
+
+  <!-- Upper arc line -->
+  <path d="M 0.5 5.5 C 3 4.5, 5.5 4.5, 8.2 5.5
+           C 10.5 6.3, 12.5 6, 15.5 5"
+        stroke="black" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.55"/>
+
+  <!-- Lower arc line -->
+  <path d="M 0.5 10.5 C 3 11.5, 5.5 11.5, 8.2 10.5
+           C 10.5 9.7, 12.5 10, 15.5 11"
+        stroke="black" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.55"/>
+
+  <!-- Needle north (filled, dark) -->
+  <path d="M 6.5 2.5 L 8.5 7.2 L 6.5 8 Z"
+        fill="black" opacity="0.85"/>
+
+  <!-- Needle south (filled, lighter) -->
+  <path d="M 10.5 13.5 L 8.5 8.8 L 10.5 8 Z"
+        fill="black" opacity="0.35"/>
+
+  <!-- Center dot -->
+  <circle cx="8.5" cy="8" r="1.8" fill="black" opacity="0.9"/>
+</svg>

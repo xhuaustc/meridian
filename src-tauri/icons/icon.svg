@@ -1,49 +1,97 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
+    <!-- Background gradient -->
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#2563eb"/>
-      <stop offset="100%" stop-color="#1e40af"/>
+      <stop offset="100%" stop-color="#1e3a8a"/>
     </linearGradient>
-    <linearGradient id="wave1" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(255,255,255,0.95)"/>
-      <stop offset="100%" stop-color="rgba(255,255,255,0.75)"/>
+
+    <!-- Flow line gradients -->
+    <linearGradient id="flow-main" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.1)"/>
+      <stop offset="50%" stop-color="rgba(255,255,255,0.9)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0.6)"/>
     </linearGradient>
-    <linearGradient id="wave2" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(255,255,255,0.55)"/>
-      <stop offset="100%" stop-color="rgba(255,255,255,0.35)"/>
+    <linearGradient id="flow-mid" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.05)"/>
+      <stop offset="50%" stop-color="rgba(255,255,255,0.4)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0.25)"/>
     </linearGradient>
-    <linearGradient id="dot" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#93c5fd"/>
-      <stop offset="100%" stop-color="#60a5fa"/>
+
+    <!-- Needle gradient (north half) -->
+    <linearGradient id="needle-north" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="rgba(191,219,254,0.9)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,1)"/>
     </linearGradient>
+
+    <!-- Glow filters -->
+    <filter id="glow-sm">
+      <feGaussianBlur stdDeviation="6.4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow-lg">
+      <feGaussianBlur stdDeviation="12.8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
   </defs>
 
   <!-- Rounded square background -->
   <rect width="512" height="512" rx="108" ry="108" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="108" ry="108" fill="none" stroke="rgba(0,0,0,0.08)" stroke-width="1"/>
 
-  <!-- Subtle inner shadow -->
-  <rect width="512" height="512" rx="108" ry="108" fill="none" stroke="rgba(0,0,0,0.1)" stroke-width="1"/>
+  <!-- === Flow lines (5 layers, bottom to top) === -->
 
-  <!-- Three flowing lines representing data streams / routing paths -->
-  <!-- Top stream -->
-  <path d="M 96 180 C 170 180, 190 140, 256 140 C 322 140, 342 180, 416 180"
-        stroke="url(#wave1)" stroke-width="28" stroke-linecap="round" fill="none"/>
+  <!-- Layer 1: faintest, top -->
+  <path d="M 45 128 C 122 115, 173 122, 230 141
+           C 275 154, 307 173, 352 173
+           C 403 173, 448 154, 474 141"
+        stroke="rgba(255,255,255,0.07)" stroke-width="5" stroke-linecap="round" fill="none"/>
 
-  <!-- Middle stream (main, thicker) -->
-  <path d="M 96 256 C 170 256, 190 216, 256 216 C 322 216, 342 296, 416 296"
-        stroke="url(#wave1)" stroke-width="32" stroke-linecap="round" fill="none"/>
+  <!-- Layer 2: subtle, upper -->
+  <path d="M 45 179 C 122 160, 186 141, 256 166
+           C 314 186, 345 205, 378 205
+           C 416 205, 448 192, 474 179"
+        stroke="url(#flow-mid)" stroke-width="8" stroke-linecap="round" fill="none"/>
 
-  <!-- Bottom stream -->
-  <path d="M 96 332 C 170 332, 190 372, 256 372 C 322 372, 342 332, 416 332"
-        stroke="url(#wave2)" stroke-width="28" stroke-linecap="round" fill="none"/>
+  <!-- Layer 3: primary flow (brightest, thickest) -->
+  <path d="M 45 256 C 109 256, 186 230, 230 230
+           C 282 230, 320 256, 371 262
+           C 416 269, 448 262, 474 256"
+        stroke="url(#flow-main)" stroke-width="16" stroke-linecap="round" fill="none"/>
 
-  <!-- Entry dots (left side) -->
-  <circle cx="88" cy="180" r="12" fill="url(#dot)"/>
-  <circle cx="88" cy="256" r="14" fill="white" opacity="0.95"/>
-  <circle cx="88" cy="332" r="12" fill="url(#dot)"/>
+  <!-- Layer 4: subtle, lower -->
+  <path d="M 45 333 C 122 352, 186 371, 256 346
+           C 314 326, 345 307, 378 307
+           C 416 307, 448 320, 474 333"
+        stroke="url(#flow-mid)" stroke-width="8" stroke-linecap="round" fill="none"/>
 
-  <!-- Exit dots (right side) -->
-  <circle cx="424" cy="180" r="12" fill="url(#dot)"/>
-  <circle cx="424" cy="296" r="14" fill="white" opacity="0.95"/>
-  <circle cx="424" cy="332" r="12" fill="url(#dot)"/>
+  <!-- Layer 5: faintest, bottom -->
+  <path d="M 45 384 C 122 397, 173 390, 230 371
+           C 275 358, 307 339, 352 339
+           C 403 339, 448 358, 474 371"
+        stroke="rgba(255,255,255,0.07)" stroke-width="5" stroke-linecap="round" fill="none"/>
+
+  <!-- === Compass needle (tilted ~15°) === -->
+
+  <!-- North half (bright) -->
+  <path d="M 230 134 L 262 243 L 230 256 Z"
+        fill="url(#needle-north)" opacity="0.7"/>
+
+  <!-- South half (dim) -->
+  <path d="M 294 378 L 262 269 L 294 256 Z"
+        fill="rgba(255,255,255,0.25)"/>
+
+  <!-- === Center pivot === -->
+
+  <!-- Outer glow -->
+  <circle cx="262" cy="256" r="32" fill="rgba(255,255,255,0.08)" filter="url(#glow-lg)"/>
+
+  <!-- Inner glow -->
+  <circle cx="262" cy="256" r="19" fill="rgba(255,255,255,0.2)" filter="url(#glow-sm)"/>
+
+  <!-- Core dot -->
+  <circle cx="262" cy="256" r="11" fill="white" opacity="0.95"/>
+
+  <!-- Subtle ring -->
+  <circle cx="262" cy="256" r="45" stroke="rgba(255,255,255,0.1)" stroke-width="1.5" fill="none"/>
 </svg>
