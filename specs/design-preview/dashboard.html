@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>轻渡 · Meridian — Design Preview</title>
+<style>
+  :root {
+    --bg-primary: #fafaf9;
+    --bg-secondary: #ffffff;
+    --bg-sidebar: #f5f5f4;
+    --bg-hover: #f0efed;
+    --text-primary: #1c1917;
+    --text-secondary: #78716c;
+    --text-tertiary: #a8a29e;
+    --border: #e7e5e4;
+    --accent: #2563eb;
+    --accent-light: #eff6ff;
+    --success: #16a34a;
+    --success-bg: #f0fdf4;
+    --error: #dc2626;
+    --error-bg: #fef2f2;
+    --warning: #d97706;
+    --warning-bg: #fffbeb;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 2px 8px rgba(0,0,0,0.06);
+    --radius-sm: 6px;
+    --radius-md: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.5;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ===== Layout ===== */
+  .app {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    grid-template-rows: 48px 1fr;
+    height: 100vh;
+  }
+
+  /* ===== Title Bar ===== */
+  .titlebar {
+    grid-column: 1 / -1;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    -webkit-app-region: drag;
+  }
+
+  .titlebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .titlebar-logo {
+    width: 24px;
+    height: 24px;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .titlebar-name {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .titlebar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .engine-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .engine-badge.running {
+    background: var(--success-bg);
+    color: var(--success);
+  }
+
+  .engine-badge .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .lang-switch {
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+  }
+
+  /* ===== Sidebar ===== */
+  .sidebar {
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    padding: 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+  }
+
+  .nav-section {
+    margin-top: 16px;
+    padding: 0 12px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-tertiary);
+    margin-bottom: 4px;
+  }
+
+  .nav-section:first-child { margin-top: 4px; }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13px;
+    transition: all 0.15s;
+  }
+
+  .nav-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .nav-item.active {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-weight: 500;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .nav-icon {
+    width: 18px;
+    height: 18px;
+    opacity: 0.65;
+    flex-shrink: 0;
+  }
+
+  .nav-item.active .nav-icon { opacity: 1; }
+
+  .nav-count {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    background: var(--bg-primary);
+    padding: 1px 6px;
+    border-radius: 10px;
+  }
+
+  /* ===== Main Content ===== */
+  .main {
+    overflow-y: auto;
+    padding: 24px;
+  }
+
+  .main-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .main-title {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .main-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    transition: all 0.15s;
+  }
+
+  .btn:hover { background: var(--bg-sidebar); }
+
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  .btn-primary:hover { background: #1d4ed8; }
+
+  /* ===== Search Bar ===== */
+  .search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .search-input {
+    flex: 1;
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+    background: var(--bg-secondary);
+    outline: none;
+    color: var(--text-primary);
+  }
+
+  .search-input:focus { border-color: var(--accent); }
+
+  .filter-chip {
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 11.5px;
+    cursor: pointer;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+  }
+
+  .filter-chip.active {
+    background: var(--accent-light);
+    color: var(--accent);
+    border-color: #bfdbfe;
+  }
+
+  /* ===== Stats Row ===== */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .stat-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .stat-value {
+    font-size: 22px;
+    font-weight: 600;
+    margin-top: 2px;
+    letter-spacing: -0.02em;
+  }
+
+  .stat-sub {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+
+  /* ===== Proxy Table ===== */
+  .proxy-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .proxy-table th {
+    text-align: left;
+    padding: 10px 16px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: var(--bg-sidebar);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .proxy-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    vertical-align: middle;
+  }
+
+  .proxy-table tr:last-child td { border-bottom: none; }
+
+  .proxy-table tbody tr:hover { background: #fafaf9; }
+
+  .proxy-name {
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .proxy-name-sub {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 1px;
+  }
+
+  .type-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+
+  .type-badge.http { background: #eff6ff; color: #2563eb; }
+  .type-badge.https { background: #f0fdf4; color: #16a34a; }
+  .type-badge.tcp { background: #fefce8; color: #a16207; }
+  .type-badge.udp { background: #fdf4ff; color: #9333ea; }
+
+  .route-cell {
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .route-arrow {
+    color: var(--text-tertiary);
+    margin: 0 6px;
+  }
+
+  .route-upstream {
+    color: var(--text-primary);
+  }
+
+  .status-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .status-dot .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+
+  .status-dot.active .dot { background: var(--success); }
+  .status-dot.active { color: var(--success); }
+  .status-dot.disabled .dot { background: var(--text-tertiary); }
+  .status-dot.disabled { color: var(--text-tertiary); }
+  .status-dot.error .dot { background: var(--error); }
+  .status-dot.error { color: var(--error); }
+
+  .toggle {
+    width: 36px;
+    height: 20px;
+    border-radius: 10px;
+    background: #d6d3d1;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+    border: none;
+  }
+
+  .toggle.on { background: var(--accent); }
+
+  .toggle::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: white;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  }
+
+  .toggle.on::after { transform: translateX(16px); }
+
+  .row-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .proxy-table tbody tr:hover .row-actions { opacity: 1; }
+
+  .row-action-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+  }
+
+  .row-action-btn:hover {
+    background: var(--bg-sidebar);
+    color: var(--text-primary);
+  }
+
+  /* ===== Page: Proxy Form ===== */
+  .page { display: none; }
+  .page.visible { display: block; }
+
+  .form-page {
+    max-width: 640px;
+  }
+
+  .form-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    margin-bottom: 16px;
+  }
+
+  .form-back:hover { color: var(--text-primary); }
+
+  .form-section {
+    margin-top: 24px;
+  }
+
+  .form-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+  }
+
+  .form-input {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    outline: none;
+    background: var(--bg-secondary);
+  }
+
+  .form-input:focus { border-color: var(--accent); }
+
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .form-row-3 {
+    display: grid;
+    grid-template-columns: 1fr 120px;
+    gap: 12px;
+  }
+
+  .radio-group {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .radio-option {
+    flex: 1;
+    padding: 7px 12px;
+    text-align: center;
+    font-size: 12px;
+    cursor: pointer;
+    border-right: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+  }
+
+  .radio-option:last-child { border-right: none; }
+  .radio-option.active {
+    background: var(--accent-light);
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .form-hint {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 4px;
+  }
+
+  .form-select {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    background: var(--bg-secondary);
+    outline: none;
+  }
+
+  .form-footer {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 32px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ===== Page: Certificates ===== */
+  .cert-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+
+  .cert-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+  }
+
+  .cert-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .cert-domain {
+    font-weight: 500;
+    font-size: 13px;
+  }
+
+  .cert-source {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+    text-transform: uppercase;
+  }
+
+  .cert-source.self { background: #fef3c7; color: #92400e; }
+  .cert-source.upload { background: #e0e7ff; color: #3730a3; }
+  .cert-source.acme { background: #d1fae5; color: #065f46; }
+
+  .cert-meta {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .cert-expiry-warn {
+    color: var(--warning);
+    font-weight: 500;
+  }
+
+  /* ===== Page: Access Lists ===== */
+  .access-list-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+
+  .access-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .access-list-name {
+    font-weight: 500;
+    font-size: 13px;
+  }
+
+  .policy-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .policy-badge.allow { background: var(--success-bg); color: var(--success); }
+  .policy-badge.deny { background: var(--error-bg); color: var(--error); }
+
+  .ip-rule-list {
+    list-style: none;
+    font-size: 12px;
+    font-family: "SF Mono", "Fira Code", monospace;
+  }
+
+  .ip-rule-list li {
+    padding: 4px 0;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ip-action {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  .ip-action.allow { color: var(--success); background: var(--success-bg); }
+  .ip-action.deny { color: var(--error); background: var(--error-bg); }
+
+  /* ===== SVG Icons ===== */
+  svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Title Bar -->
+  <div class="titlebar">
+    <div class="titlebar-brand">
+      <div class="titlebar-logo">渡</div>
+      <span class="titlebar-name">轻渡 · Meridian</span>
+    </div>
+    <div class="titlebar-right">
+      <div class="engine-badge running">
+        <span class="dot"></span>
+        Nginx Running
+      </div>
+      <button class="lang-switch" onclick="toggleLang()">中 / EN</button>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="nav-section" data-i18n-section="proxy">代理管理</div>
+    <div class="nav-item active" onclick="showPage('dashboard')">
+      <svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 17H7v-7h2m4 7h-2v-4h2m4 4h-2v-10h2M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg>
+      <span data-i18n="nav.dashboard">仪表盘</span>
+      <span class="nav-count">5</span>
+    </div>
+    <div class="nav-item" onclick="showPage('form')">
+      <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+      <span data-i18n="nav.addProxy">添加代理</span>
+    </div>
+
+    <div class="nav-section" data-i18n-section="security">安全</div>
+    <div class="nav-item" onclick="showPage('certs')">
+      <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+      <span data-i18n="nav.certs">证书管理</span>
+      <span class="nav-count">3</span>
+    </div>
+    <div class="nav-item" onclick="showPage('access')">
+      <svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+      <span data-i18n="nav.access">访问控制</span>
+      <span class="nav-count">2</span>
+    </div>
+
+    <div class="nav-section" data-i18n-section="system">系统</div>
+    <div class="nav-item" onclick="showPage('logs')">
+      <svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      <span data-i18n="nav.logs">日志</span>
+    </div>
+    <div class="nav-item">
+      <svg class="nav-icon" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span data-i18n="nav.settings">设置</span>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main">
+
+    <!-- ===== Dashboard Page ===== -->
+    <div class="page visible" id="page-dashboard">
+      <div class="main-header">
+        <h1 class="main-title" data-i18n="dashboard.title">代理规则</h1>
+        <div class="main-actions">
+          <button class="btn" onclick="showPage('form')">
+            <svg style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+            导入
+          </button>
+          <button class="btn btn-primary" onclick="showPage('form')">
+            <svg style="width:14px;height:14px;stroke:white" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+            添加代理
+          </button>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">活跃代理</div>
+          <div class="stat-value" style="color:var(--success)">4</div>
+          <div class="stat-sub">共 5 条规则</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">HTTP / HTTPS</div>
+          <div class="stat-value">3</div>
+          <div class="stat-sub">七层代理</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">TCP / UDP</div>
+          <div class="stat-value">2</div>
+          <div class="stat-sub">四层代理</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">证书</div>
+          <div class="stat-value">3</div>
+          <div class="stat-sub" style="color:var(--warning)">1 即将到期</div>
+        </div>
+      </div>
+
+      <!-- Search & Filter -->
+      <div class="search-bar">
+        <input class="search-input" placeholder="搜索规则名称、域名、端口..." />
+        <span class="filter-chip active">全部</span>
+        <span class="filter-chip">HTTP</span>
+        <span class="filter-chip">HTTPS</span>
+        <span class="filter-chip">TCP</span>
+        <span class="filter-chip">UDP</span>
+      </div>
+
+      <!-- Proxy Table -->
+      <table class="proxy-table">
+        <thead>
+          <tr>
+            <th style="width:30%">名称</th>
+            <th style="width:8%">类型</th>
+            <th style="width:32%">路由</th>
+            <th style="width:10%">状态</th>
+            <th style="width:8%">开关</th>
+            <th style="width:12%"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="proxy-name">Frontend Dev Server</div>
+              <div class="proxy-name-sub">前端开发服务</div>
+            </td>
+            <td><span class="type-badge https">HTTPS</span></td>
+            <td class="route-cell">
+              app.local:443/
+              <span class="route-arrow">→</span>
+              <span class="route-upstream">127.0.0.1:3000</span>
+            </td>
+            <td><span class="status-dot active"><span class="dot"></span> Active</span></td>
+            <td><button class="toggle on"></button></td>
+            <td>
+              <div class="row-actions">
+                <button class="row-action-btn" title="编辑"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button>
+                <button class="row-action-btn" title="复制"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></button>
+                <button class="row-action-btn" title="删除"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <div class="proxy-name">API Gateway</div>
+              <div class="proxy-name-sub">后端 API 代理</div>
+            </td>
+            <td><span class="type-badge http">HTTP</span></td>
+            <td class="route-cell">
+              api.local:80/v1
+              <span class="route-arrow">→</span>
+              <span class="route-upstream">127.0.0.1:8080</span>
+            </td>
+            <td><span class="status-dot active"><span class="dot"></span> Active</span></td>
+            <td><button class="toggle on"></button></td>
+            <td>
+              <div class="row-actions">
+                <button class="row-action-btn" title="编辑"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button>
+                <button class="row-action-btn" title="复制"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></button>
+                <button class="row-action-btn" title="删除"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <div class="proxy-name">GraphQL Endpoint</div>
+              <div class="proxy-name-sub">GraphQL 代理</div>
+            </td>
+            <td><span class="type-badge https">HTTPS</span></td>
+            <td class="route-cell">
+              api.local:443/graphql
+              <span class="route-arrow">→</span>
+              <span class="route-upstream">127.0.0.1:4000</span>
+            </td>
+            <td><span class="status-dot active"><span class="dot"></span> Active</span></td>
+            <td><button class="toggle on"></button></td>
+            <td>
+              <div class="row-actions">
+                <button class="row-action-btn" title="编辑"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button>
+                <button class="row-action-btn" title="复制"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></button>
+                <button class="row-action-btn" title="删除"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <div class="proxy-name">Database Tunnel</div>
+              <div class="proxy-name-sub">数据库连接隧道</div>
+            </td>
+            <td><span class="type-badge tcp">TCP</span></td>
+            <td class="route-cell">
+              :15432
+              <span class="route-arrow">→</span>
+              <span class="route-upstream">192.168.1.50:5432</span>
+            </td>
+            <td><span class="status-dot active"><span class="dot"></span> Active</span></td>
+            <td><button class="toggle on"></button></td>
+            <td>
+              <div class="row-actions">
+                <button class="row-action-btn" title="编辑"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button>
+                <button class="row-action-btn" title="复制"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></button>
+                <button class="row-action-btn" title="删除"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <div class="proxy-name">Redis Cache</div>
+              <div class="proxy-name-sub" style="color:var(--error)">连接失败</div>
+            </td>
+            <td><span class="type-badge tcp">TCP</span></td>
+            <td class="route-cell">
+              :16379
+              <span class="route-arrow">→</span>
+              <span class="route-upstream">192.168.1.50:6379</span>
+            </td>
+            <td><span class="status-dot disabled"><span class="dot"></span> Off</span></td>
+            <td><button class="toggle"></button></td>
+            <td>
+              <div class="row-actions">
+                <button class="row-action-btn" title="编辑"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button>
+                <button class="row-action-btn" title="复制"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></button>
+                <button class="row-action-btn" title="删除"><svg style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ===== Proxy Form Page ===== -->
+    <div class="page" id="page-form">
+      <div class="form-page">
+        <div class="form-back" onclick="showPage('dashboard')">← 返回列表</div>
+        <div class="main-header">
+          <h1 class="main-title">添加代理规则</h1>
+        </div>
+
+        <div class="form-section">
+          <div class="form-section-title">基本信息</div>
+          <div class="form-group">
+            <label class="form-label">规则名称</label>
+            <input class="form-input" placeholder="如：Frontend Dev Server" value="" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">代理类型</label>
+            <div class="radio-group">
+              <div class="radio-option active" onclick="switchProxyType(this, 'http')">HTTP</div>
+              <div class="radio-option" onclick="switchProxyType(this, 'https')">HTTPS</div>
+              <div class="radio-option" onclick="switchProxyType(this, 'tcp')">TCP Stream</div>
+              <div class="radio-option" onclick="switchProxyType(this, 'udp')">UDP Stream</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section" id="section-listen">
+          <div class="form-section-title">监听配置</div>
+          <div class="form-row">
+            <div class="form-group" id="group-domain">
+              <label class="form-label">域名</label>
+              <input class="form-input" placeholder="如：app.local" />
+              <div class="form-hint">仅 HTTP/HTTPS 类型需要</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">监听端口</label>
+              <input class="form-input" type="number" placeholder="80" />
+            </div>
+          </div>
+          <div class="form-group" id="group-path">
+            <label class="form-label">路径前缀（可选）</label>
+            <input class="form-input" placeholder="如：/api" />
+            <div class="form-hint">匹配此前缀的请求将被转发</div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="form-section-title">转发目标</div>
+          <div class="form-row-3">
+            <div class="form-group">
+              <label class="form-label">目标地址</label>
+              <input class="form-input" placeholder="127.0.0.1" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">目标端口</label>
+              <input class="form-input" type="number" placeholder="3000" />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section" id="section-tls">
+          <div class="form-section-title">TLS 配置</div>
+          <div class="form-group">
+            <label class="form-label">TLS 模式</label>
+            <div class="radio-group">
+              <div class="radio-option active">无</div>
+              <div class="radio-option">TLS 终止</div>
+              <div class="radio-option">TLS 透传</div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">证书</label>
+            <select class="form-select">
+              <option value="">选择证书...</option>
+              <option>app.local (自签名)</option>
+              <option>*.dev.local (Let's Encrypt)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="form-section-title">高级选项</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">访问控制列表</label>
+              <select class="form-select">
+                <option value="">无</option>
+                <option>Office Network Only</option>
+                <option>Block External</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="display:flex;align-items:center;gap:8px;margin-top:22px">
+                <input type="checkbox" /> 启用 WebSocket
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-footer">
+          <button class="btn" onclick="showPage('dashboard')">取消</button>
+          <button class="btn btn-primary" onclick="showPage('dashboard')">保存并应用</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Certificates Page ===== -->
+    <div class="page" id="page-certs">
+      <div class="main-header">
+        <h1 class="main-title">证书管理</h1>
+        <div class="main-actions">
+          <button class="btn">生成自签名</button>
+          <button class="btn">ACME 申请</button>
+          <button class="btn btn-primary">
+            <svg style="width:14px;height:14px;stroke:white" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+            上传证书
+          </button>
+        </div>
+      </div>
+
+      <div class="cert-grid">
+        <div class="cert-card">
+          <div class="cert-card-header">
+            <div class="cert-domain">app.local</div>
+            <span class="cert-source self">自签名</span>
+          </div>
+          <div class="cert-meta">
+            <span>创建：2026-03-15</span>
+            <span>到期：2027-03-15</span>
+            <span>绑定：Frontend Dev Server</span>
+          </div>
+        </div>
+        <div class="cert-card">
+          <div class="cert-card-header">
+            <div class="cert-domain">*.dev.local</div>
+            <span class="cert-source acme">ACME</span>
+          </div>
+          <div class="cert-meta">
+            <span>创建：2026-02-01</span>
+            <span>到期：2026-05-01 · 自动续期</span>
+            <span>绑定：GraphQL Endpoint</span>
+          </div>
+        </div>
+        <div class="cert-card">
+          <div class="cert-card-header">
+            <div class="cert-domain">api.company.com</div>
+            <span class="cert-source upload">上传</span>
+          </div>
+          <div class="cert-meta">
+            <span>创建：2026-01-10</span>
+            <span class="cert-expiry-warn">到期：2026-04-20 · 16 天后到期</span>
+            <span>绑定：未绑定</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Access Lists Page ===== -->
+    <div class="page" id="page-access">
+      <div class="main-header">
+        <h1 class="main-title">访问控制列表</h1>
+        <div class="main-actions">
+          <button class="btn btn-primary">
+            <svg style="width:14px;height:14px;stroke:white" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+            新建列表
+          </button>
+        </div>
+      </div>
+
+      <div class="access-list-card">
+        <div class="access-list-header">
+          <div>
+            <div class="access-list-name">Office Network Only</div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">绑定：Frontend Dev Server, API Gateway</div>
+          </div>
+          <span class="policy-badge deny">默认拒绝</span>
+        </div>
+        <ul class="ip-rule-list">
+          <li><span class="ip-action allow">ALLOW</span> 192.168.1.0/24</li>
+          <li><span class="ip-action allow">ALLOW</span> 10.0.0.0/8</li>
+          <li><span class="ip-action allow">ALLOW</span> 127.0.0.1</li>
+        </ul>
+      </div>
+
+      <div class="access-list-card">
+        <div class="access-list-header">
+          <div>
+            <div class="access-list-name">Block External</div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">绑定：Database Tunnel</div>
+          </div>
+          <span class="policy-badge allow">默认允许</span>
+        </div>
+        <ul class="ip-rule-list">
+          <li><span class="ip-action deny">DENY</span> 0.0.0.0/0</li>
+          <li><span class="ip-action allow">ALLOW</span> 192.168.0.0/16</li>
+          <li><span class="ip-action allow">ALLOW</span> 127.0.0.1</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ===== Logs Page ===== -->
+    <div class="page" id="page-logs">
+      <div class="main-header">
+        <h1 class="main-title">日志查看</h1>
+        <div class="main-actions">
+          <span class="filter-chip active">Access Log</span>
+          <span class="filter-chip">Error Log</span>
+          <button class="btn">清除</button>
+        </div>
+      </div>
+      <div style="background:#1c1917;border-radius:var(--radius-md);padding:16px;font-family:'SF Mono','Fira Code',monospace;font-size:11.5px;line-height:1.8;color:#a8a29e;max-height:calc(100vh - 160px);overflow-y:auto;">
+        <div><span style="color:#78716c">2026-04-04 10:23:45</span> <span style="color:#22c55e">200</span> GET app.local/  <span style="color:#78716c">→ 127.0.0.1:3000</span>  <span style="color:#78716c">12ms</span></div>
+        <div><span style="color:#78716c">2026-04-04 10:23:46</span> <span style="color:#22c55e">200</span> GET api.local/v1/users  <span style="color:#78716c">→ 127.0.0.1:8080</span>  <span style="color:#78716c">45ms</span></div>
+        <div><span style="color:#78716c">2026-04-04 10:23:47</span> <span style="color:#22c55e">200</span> POST api.local/graphql  <span style="color:#78716c">→ 127.0.0.1:4000</span>  <span style="color:#78716c">8ms</span></div>
+        <div><span style="color:#78716c">2026-04-04 10:23:48</span> <span style="color:#f59e0b">304</span> GET app.local/assets/main.js  <span style="color:#78716c">→ 127.0.0.1:3000</span>  <span style="color:#78716c">2ms</span></div>
+        <div><span style="color:#78716c">2026-04-04 10:23:50</span> <span style="color:#ef4444">502</span> GET api.local/v1/health  <span style="color:#78716c">→ 127.0.0.1:8080</span>  <span style="color:#78716c">timeout</span></div>
+        <div><span style="color:#78716c">2026-04-04 10:23:51</span> <span style="color:#22c55e">200</span> GET app.local/  <span style="color:#78716c">→ 127.0.0.1:3000</span>  <span style="color:#78716c">9ms</span></div>
+        <div><span style="color:#78716c">2026-04-04 10:23:53</span> <span style="color:#22c55e">200</span> POST api.local/graphql  <span style="color:#78716c">→ 127.0.0.1:4000</span>  <span style="color:#78716c">15ms</span></div>
+        <div><span style="color:#78716c">2026-04-04 10:23:55</span> <span style="color:#ef4444">403</span> GET api.local/v1/admin  <span style="color:#78716c">→ blocked by access list</span>  <span style="color:#78716c">—</span></div>
+        <div style="color:#78716c">▌</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('visible'));
+  document.getElementById('page-' + name).classList.add('visible');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const map = { dashboard: 0, form: 1, certs: 2, access: 3, logs: 4 };
+  const items = document.querySelectorAll('.nav-item');
+  if (items[map[name]]) items[map[name]].classList.add('active');
+}
+
+function switchProxyType(el, type) {
+  el.parentNode.querySelectorAll('.radio-option').forEach(o => o.classList.remove('active'));
+  el.classList.add('active');
+  const domain = document.getElementById('group-domain');
+  const path = document.getElementById('group-path');
+  const tls = document.getElementById('section-tls');
+  if (type === 'tcp' || type === 'udp') {
+    domain.style.display = 'none';
+    path.style.display = 'none';
+    tls.style.display = 'none';
+  } else {
+    domain.style.display = '';
+    path.style.display = '';
+    tls.style.display = '';
+  }
+}
+
+const translations = {
+  zh: {
+    'nav.dashboard': '仪表盘', 'nav.addProxy': '添加代理', 'nav.certs': '证书管理',
+    'nav.access': '访问控制', 'nav.logs': '日志', 'nav.settings': '设置',
+    'dashboard.title': '代理规则'
+  },
+  en: {
+    'nav.dashboard': 'Dashboard', 'nav.addProxy': 'Add Proxy', 'nav.certs': 'Certificates',
+    'nav.access': 'Access Control', 'nav.logs': 'Logs', 'nav.settings': 'Settings',
+    'dashboard.title': 'Proxy Rules'
+  }
+};
+
+let currentLang = 'zh';
+function toggleLang() {
+  currentLang = currentLang === 'zh' ? 'en' : 'zh';
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (translations[currentLang][key]) el.textContent = translations[currentLang][key];
+  });
+}
+</script>
+</body>
+</html>

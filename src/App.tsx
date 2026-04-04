@@ -1,0 +1,52 @@
+import { useEffect } from "react";
+import { Routes, Route, useNavigate } from "react-router-dom";
+import { AppShell } from "./components/layout/AppShell";
+import { ToastContainer } from "./components/ui/Toast";
+import { DashboardPage } from "./pages/DashboardPage";
+import { ProxyFormPage } from "./pages/ProxyFormPage";
+import { CertsPage } from "./pages/CertsPage";
+import { AccessPage } from "./pages/AccessPage";
+import { LogsPage } from "./pages/LogsPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { useSettingsStore } from "./stores/settings-store";
+import { useTranslation } from "react-i18next";
+
+function App() {
+  const initialize = useSettingsStore((s) => s.initialize);
+  const language = useSettingsStore((s) => s.language);
+  const { i18n } = useTranslation();
+
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
+  // Expose navigate to Rust tray menu handler
+  const navigate = useNavigate();
+  useEffect(() => {
+    (window as any).__navigate = (path: string) => navigate(path);
+    return () => { delete (window as any).__navigate; };
+  }, [navigate]);
+
+  useEffect(() => {
+    i18n.changeLanguage(language);
+  }, [language, i18n]);
+
+  return (
+    <>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/proxy/new" element={<ProxyFormPage />} />
+          <Route path="/proxy/:id" element={<ProxyFormPage />} />
+          <Route path="/certs" element={<CertsPage />} />
+          <Route path="/access" element={<AccessPage />} />
+          <Route path="/logs" element={<LogsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Route>
+      </Routes>
+      <ToastContainer />
+    </>
+  );
+}
+
+export default App;
