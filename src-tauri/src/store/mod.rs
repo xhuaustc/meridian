@@ -2,6 +2,7 @@ pub mod access_repo;
 pub mod acme_repo;
 pub mod cert_repo;
 pub mod dns_credential_repo;
+pub mod hosts_repo;
 pub mod models;
 pub mod proxy_repo;
 pub mod settings_repo;
