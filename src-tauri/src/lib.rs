@@ -153,6 +153,17 @@ fn sync_tray(state: tauri::State<'_, AppState>) {
     }
 }
 
+#[tauri::command]
+fn get_platform() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(target_os = "windows") {
+        "windows"
+    } else {
+        "linux"
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize tracing
@@ -441,6 +452,7 @@ pub fn run() {
             commands::settings::import_data,
             commands::settings::backup_database,
             sync_tray,
+            get_platform,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

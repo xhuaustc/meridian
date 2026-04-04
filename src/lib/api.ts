@@ -219,3 +219,6 @@ export const backupDatabase = () => invoke<string>('backup_database');
 
 // --- Tray ---
 export const syncTray = () => invoke<void>('sync_tray');
+
+// --- Platform ---
+export const getPlatform = () => invoke<string>('get_platform');
