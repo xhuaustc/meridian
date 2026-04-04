@@ -55,6 +55,53 @@
   --color-warning-bg: #2d2305;
 }
 
+/* Platform-specific overrides */
+[data-platform="macos"] {
+  --color-accent: #2563eb;
+  --color-bg-sidebar: transparent;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+}
+
+[data-platform="windows"] {
+  --color-accent: #0067c0;
+  --color-accent-light: #e8f0fe;
+  --color-bg-sidebar: transparent;
+  --radius-sm: 4px;
+  --radius-md: 4px;
+}
+
+[data-platform="linux"] {
+  --color-accent: #3584e4;
+  --color-accent-light: #dce8fc;
+  --color-bg-sidebar: #f6f5f4;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+}
+
+/* Dark mode + platform overrides */
+.dark[data-platform="macos"] {
+  --color-accent: #3b82f6;
+  --color-bg-sidebar: transparent;
+}
+
+.dark[data-platform="windows"] {
+  --color-accent: #4cc2ff;
+  --color-accent-light: #1a3a5c;
+  --color-bg-sidebar: transparent;
+}
+
+.dark[data-platform="linux"] {
+  --color-accent: #62a0ea;
+  --color-accent-light: #1a3352;
+  --color-bg-sidebar: #2d2d2d;
+}
+
+/* macOS sidebar top padding for traffic lights */
+[data-platform="macos"] .sidebar-nav {
+  padding-top: 52px;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
