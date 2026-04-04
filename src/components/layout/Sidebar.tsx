@@ -58,7 +58,7 @@ export function Sidebar() {
   };
 
   return (
-    <div className="bg-bg-sidebar border-r border-border py-3 px-2 flex flex-col gap-0.5 overflow-y-auto">
+    <div className="sidebar-nav bg-bg-sidebar border-r border-border py-3 px-2 flex flex-col gap-0.5 overflow-y-auto">
       {sections.map((section, si) => (
         <div key={si}>
           <div
