@@ -29,3 +29,6 @@ src-tauri/binaries/nginx-*
 
 # Superpowers brainstorm sessions
 .superpowers/
+
+# Git worktrees
+.worktrees/
