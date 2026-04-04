@@ -251,6 +251,36 @@ fn validate_ip_address(ip: &str, original: &str) -> Result<(), AppError> {
     )))
 }
 
+pub fn validate_host_entry(ip: &str, hostname: &str) -> Result<(), AppError> {
+    let ip = ip.trim();
+    if ip.is_empty() {
+        return Err(AppError::Validation("IP address must not be empty".to_string()));
+    }
+    if ip.parse::<std::net::Ipv4Addr>().is_err() && ip.parse::<std::net::Ipv6Addr>().is_err() {
+        return Err(AppError::Validation(format!("Invalid IP address '{}'", ip)));
+    }
+
+    let hostname = hostname.trim();
+    if hostname.is_empty() {
+        return Err(AppError::Validation("Hostname must not be empty".to_string()));
+    }
+    if hostname.len() > 253 {
+        return Err(AppError::Validation("Hostname must not exceed 253 characters".to_string()));
+    }
+    let valid = hostname.split('.').all(|label| {
+        !label.is_empty()
+            && label.len() <= 63
+            && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+    });
+    if !valid {
+        return Err(AppError::Validation(format!("Invalid hostname format '{}'", hostname)));
+    }
+
+    Ok(())
+}
+
 pub fn validate_create_cert(domain: &str) -> Result<(), AppError> {
     let domain = domain.trim();
     if domain.is_empty() {
