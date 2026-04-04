@@ -170,7 +170,7 @@ export function LogsPage() {
       <div
         ref={logContainerRef}
         onScroll={handleScroll}
-        className="bg-[#1c1917] rounded-[var(--radius-md)] p-4 font-mono text-[11.5px] leading-[1.8] text-[#a8a29e] max-h-[calc(100vh-200px)] overflow-y-auto"
+        className="bg-[#1c1917] rounded-[var(--radius-md)] p-4 font-mono text-[11.5px] leading-[1.8] text-[#a8a29e] max-h-[calc(100vh-200px)] overflow-auto whitespace-nowrap"
       >
         {lines.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
