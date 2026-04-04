@@ -29,7 +29,9 @@ function Select({ value, onChange, children, className, disabled }: SelectProps)
     if (!nodes) return;
     const arr = Array.isArray(nodes) ? nodes : [nodes];
     for (const child of arr) {
-      if (child && typeof child === 'object' && 'props' in child) {
+      if (Array.isArray(child)) {
+        parseChildren(child);
+      } else if (child && typeof child === 'object' && 'props' in child) {
         if (child.type === 'option') {
           options.push({
             value: child.props.value ?? '',
