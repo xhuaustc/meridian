@@ -10,7 +10,7 @@ import { ConfirmDialog } from '../components/ui/Dialog';
 import { useProxyStore } from '../stores/proxy-store';
 import { useCertStore } from '../stores/cert-store';
 import { useToastStore } from '../stores/toast-store';
-import { checkExpiringCerts, createProxy } from '../lib/api';
+import { checkExpiringCerts, createProxy, listProxies, checkHostnameExists, deleteHost } from '../lib/api';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { cn } from '../lib/utils';
 import type { ProxyRule } from '../types';
@@ -55,6 +55,7 @@ export function DashboardPage() {
   const [filter, setFilter] = useState<FilterType>('all');
   const [deleteTarget, setDeleteTarget] = useState<ProxyRule | null>(null);
   const [expiringCount, setExpiringCount] = useState(0);
+  const [hostsCleanupTarget, setHostsCleanupTarget] = useState<{ hostname: string; hostEntryId: string } | null>(null);
 
   useEffect(() => {
     fetchProxies();
@@ -103,13 +104,33 @@ export function DashboardPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
+    const deletedDomain = deleteTarget.domain;
     try {
       await deleteProxy(deleteTarget.id);
       addToast('success', t('dashboard.deleteSuccess'));
     } catch (e) {
       addToast('error', String(e));
+      setDeleteTarget(null);
+      return;
     }
     setDeleteTarget(null);
+
+    // Check if domain's hosts entry should be cleaned up
+    if (deletedDomain) {
+      try {
+        const allProxies = await listProxies();
+        const domainStillUsed = allProxies.rules.some(
+          (r) => r.domain === deletedDomain,
+        );
+        if (!domainStillUsed) {
+          const hostEntry = await checkHostnameExists(deletedDomain);
+          if (hostEntry) {
+            setHostsCleanupTarget({ hostname: deletedDomain, hostEntryId: hostEntry.id });
+            return;
+          }
+        }
+      } catch { /* ignore */ }
+    }
   };
 
   const handleCopy = async (rule: ProxyRule) => {
@@ -379,6 +400,25 @@ export function DashboardPage() {
           title={t('common.delete')}
           message={t('dashboard.confirmDelete', { name: deleteTarget?.name })}
           confirmText={t('common.delete')}
+          danger
+        />
+
+        <ConfirmDialog
+          open={!!hostsCleanupTarget}
+          onClose={() => setHostsCleanupTarget(null)}
+          onConfirm={async () => {
+            if (hostsCleanupTarget) {
+              try {
+                await deleteHost(hostsCleanupTarget.hostEntryId);
+                addToast('success', t('hosts.deleteSuccess'));
+              } catch (e) {
+                addToast('error', String(e));
+              }
+            }
+          }}
+          title={t('hosts.deletePromptTitle')}
+          message={t('hosts.deletePromptMessage', { domain: hostsCleanupTarget?.hostname })}
+          confirmText={t('hosts.deletePromptConfirm')}
           danger
         />
       </div>
