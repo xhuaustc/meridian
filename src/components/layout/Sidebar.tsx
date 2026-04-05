@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -12,10 +13,14 @@ import {
   Moon,
   Monitor,
   Languages,
+  Play,
+  Square,
+  RotateCw,
 } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { cn } from '../../lib/utils';
 import { useSettingsStore } from '../../stores/settings-store';
+import { useEngineStore } from '../../stores/engine-store';
 
 interface NavItem {
   icon: React.ElementType;
@@ -41,6 +46,26 @@ export function Sidebar() {
   const setTheme = useSettingsStore((s) => s.setTheme);
   const language = useSettingsStore((s) => s.language);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
+  const { status, loading, fetchStatus, start, stop, reload } = useEngineStore();
+
+  // Poll engine status
+  useEffect(() => {
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 5000);
+    return () => clearInterval(interval);
+  }, [fetchStatus]);
+
+  // Listen for system color scheme changes
+  useEffect(() => {
+    if (theme === 'system') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      const handler = () => useSettingsStore.getState().applyTheme('system');
+      mq.addEventListener('change', handler);
+      return () => mq.removeEventListener('change', handler);
+    }
+  }, [theme]);
+
+  const isRunning = status?.status === 'running';
 
   const sections: { titleKey: string; items: NavItem[] }[] = [
     {
@@ -118,8 +143,59 @@ export function Sidebar() {
         ))}
       </div>
 
-      {/* Bottom controls: theme + language */}
+      {/* Bottom controls */}
       <div className="mt-auto pt-3 border-t border-border mx-1 flex flex-col gap-2 pb-1">
+        {/* Engine status + controls */}
+        <div className="flex items-center justify-between px-1">
+          <div
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 rounded-[20px] text-[11px] font-medium',
+              isRunning
+                ? 'bg-success-bg text-success'
+                : 'bg-error-bg text-error',
+            )}
+          >
+            <span
+              className={cn(
+                'w-1.5 h-1.5 rounded-full bg-current',
+                isRunning && 'animate-pulse',
+              )}
+            />
+            {isRunning ? t('engine.running') : t('engine.stopped')}
+          </div>
+          <div className="flex items-center gap-0.5">
+            {!isRunning ? (
+              <button
+                onClick={start}
+                disabled={loading}
+                className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-success disabled:opacity-50 cursor-pointer"
+                title={t('engine.start')}
+              >
+                <Play className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={reload}
+                  disabled={loading}
+                  className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-accent disabled:opacity-50 cursor-pointer"
+                  title={t('engine.reload')}
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={stop}
+                  disabled={loading}
+                  className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-error disabled:opacity-50 cursor-pointer"
+                  title={t('engine.stop')}
+                >
+                  <Square className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
         {/* Theme switcher */}
         <div className="flex items-center gap-1 bg-bg-primary rounded-[var(--radius-sm)] p-0.5">
           {themeOrder.map((t) => {
