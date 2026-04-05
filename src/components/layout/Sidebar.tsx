@@ -144,9 +144,40 @@ export function Sidebar() {
       </div>
 
       {/* Bottom area */}
-      <div className="mt-auto mx-1 flex flex-col pb-1">
-        {/* Engine status + controls — above the divider */}
-        <div className="flex items-center justify-between px-1 pb-3">
+      <div className="mt-auto mx-1 flex flex-col gap-2 pb-1">
+        {/* Language switcher */}
+        <button
+          onClick={() => setLanguage(language === 'zh' ? 'en' : 'zh')}
+          className="flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-[12px] text-text-tertiary hover:text-text-secondary hover:bg-bg-hover cursor-pointer transition-colors"
+        >
+          <Languages className="w-3.5 h-3.5" />
+          <span>{language === 'zh' ? 'English' : '中文'}</span>
+        </button>
+        {/* Theme switcher */}
+        <div className="flex items-center gap-1 bg-bg-primary rounded-[var(--radius-sm)] p-0.5">
+          {themeOrder.map((t) => {
+            const Icon = themeIcons[t];
+            return (
+              <button
+                key={t}
+                onClick={() => setTheme(t)}
+                className={cn(
+                  'flex-1 flex items-center justify-center py-1.5 rounded-[4px] cursor-pointer transition-all duration-150',
+                  theme === t
+                    ? 'bg-bg-secondary text-text-primary shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
+                    : 'text-text-tertiary hover:text-text-secondary',
+                )}
+                title={t.charAt(0).toUpperCase() + t.slice(1)}
+              >
+                <Icon className="w-3.5 h-3.5" />
+              </button>
+            );
+          })}
+        </div>
+        {/* Divider */}
+        <div className="border-t border-border" />
+        {/* Engine status + controls */}
+        <div className="flex items-center justify-between px-1">
           <div
             className={cn(
               'flex items-center gap-1.5 px-2 py-1 rounded-[20px] text-[11px] font-medium',
@@ -194,39 +225,6 @@ export function Sidebar() {
               </>
             )}
           </div>
-        </div>
-
-        {/* Divider */}
-        <div className="border-t border-border pt-2 flex flex-col gap-2">
-        {/* Theme switcher */}
-        <div className="flex items-center gap-1 bg-bg-primary rounded-[var(--radius-sm)] p-0.5">
-          {themeOrder.map((t) => {
-            const Icon = themeIcons[t];
-            return (
-              <button
-                key={t}
-                onClick={() => setTheme(t)}
-                className={cn(
-                  'flex-1 flex items-center justify-center py-1.5 rounded-[4px] cursor-pointer transition-all duration-150',
-                  theme === t
-                    ? 'bg-bg-secondary text-text-primary shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
-                    : 'text-text-tertiary hover:text-text-secondary',
-                )}
-                title={t.charAt(0).toUpperCase() + t.slice(1)}
-              >
-                <Icon className="w-3.5 h-3.5" />
-              </button>
-            );
-          })}
-        </div>
-        {/* Language switcher */}
-        <button
-          onClick={() => setLanguage(language === 'zh' ? 'en' : 'zh')}
-          className="flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-[12px] text-text-tertiary hover:text-text-secondary hover:bg-bg-hover cursor-pointer transition-colors"
-        >
-          <Languages className="w-3.5 h-3.5" />
-          <span>{language === 'zh' ? 'English' : '中文'}</span>
-        </button>
         </div>
       </div>
     </div>
