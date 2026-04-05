@@ -143,10 +143,10 @@ export function Sidebar() {
         ))}
       </div>
 
-      {/* Bottom controls */}
-      <div className="mt-auto pt-3 border-t border-border mx-1 flex flex-col gap-2 pb-1">
-        {/* Engine status + controls */}
-        <div className="flex items-center justify-between px-1">
+      {/* Bottom area */}
+      <div className="mt-auto mx-1 flex flex-col pb-1">
+        {/* Engine status + controls — above the divider */}
+        <div className="flex items-center justify-between px-1 pb-3">
           <div
             className={cn(
               'flex items-center gap-1.5 px-2 py-1 rounded-[20px] text-[11px] font-medium',
@@ -196,6 +196,8 @@ export function Sidebar() {
           </div>
         </div>
 
+        {/* Divider */}
+        <div className="border-t border-border pt-2 flex flex-col gap-2">
         {/* Theme switcher */}
         <div className="flex items-center gap-1 bg-bg-primary rounded-[var(--radius-sm)] p-0.5">
           {themeOrder.map((t) => {
@@ -225,6 +227,7 @@ export function Sidebar() {
           <Languages className="w-3.5 h-3.5" />
           <span>{language === 'zh' ? 'English' : '中文'}</span>
         </button>
+        </div>
       </div>
     </div>
   );
