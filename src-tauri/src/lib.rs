@@ -352,6 +352,8 @@ pub fn run() {
                     let rules = store::proxy_repo::list_enabled(&db).unwrap_or_default();
                     let certs = store::cert_repo::list_all(&db).unwrap_or_default();
                     let access_lists_raw = store::access_repo::list_all_lists(&db).unwrap_or_default();
+                    let worker_processes = store::settings_repo::get(&db, "worker_processes")
+                        .ok().flatten().unwrap_or_else(|| "2".to_string());
                     let mut access_lists = Vec::new();
                     for al in &access_lists_raw {
                         if let Ok(rules) = store::access_repo::list_rules_by_list(&db, &al.id) {
@@ -359,7 +361,9 @@ pub fn run() {
                         }
                     }
                     drop(db);
-                    let _ = config_engine::generate_all_configs(&app_data_dir, &rules, &certs, &access_lists);
+                    let _ = config_engine::generate_all_configs_with_settings(
+                        &app_data_dir, &rules, &certs, &access_lists, &worker_processes,
+                    );
                 }
             }
 

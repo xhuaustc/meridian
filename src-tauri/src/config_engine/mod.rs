@@ -42,6 +42,18 @@ pub fn generate_all_configs(
     certs: &[Certificate],
     access_lists: &[(AccessList, Vec<AccessRule>)],
 ) -> Result<Vec<PortConflict>, AppError> {
+    generate_all_configs_with_settings(data_dir, rules, certs, access_lists, "2")
+}
+
+/// Generate all configs with explicit settings.
+/// `worker_processes`: "auto" or a numeric string (default "2").
+pub fn generate_all_configs_with_settings(
+    data_dir: &Path,
+    rules: &[ProxyRule],
+    certs: &[Certificate],
+    access_lists: &[(AccessList, Vec<AccessRule>)],
+    worker_processes: &str,
+) -> Result<Vec<PortConflict>, AppError> {
     let nginx_dir = data_dir.join("nginx");
     let conf_d = nginx_dir.join("conf.d");
     let stream_d = nginx_dir.join("stream.d");
@@ -59,7 +71,7 @@ pub fn generate_all_configs(
     let conflicts = conflict::detect_conflicts(rules);
 
     // Write main nginx.conf
-    let main_conf = main_config::generate_main_config(data_dir);
+    let main_conf = main_config::generate_main_config(data_dir, worker_processes);
     fs::write(nginx_dir.join("nginx.conf"), main_conf)?;
     info!("Wrote nginx.conf");
 

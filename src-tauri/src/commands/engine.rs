@@ -4,7 +4,7 @@ use crate::config_engine;
 use crate::error::AppError;
 use crate::nginx_manager;
 use crate::store::models::{NginxStatus, PortConflict, ProxyRule};
-use crate::store::{access_repo, cert_repo, proxy_repo};
+use crate::store::{access_repo, cert_repo, proxy_repo, settings_repo};
 use crate::AppState;
 
 #[tauri::command]
@@ -121,6 +121,8 @@ fn apply_config_inner(state: &AppState) -> Result<Vec<PortConflict>, AppError> {
     let rules = proxy_repo::list_enabled(&db)?;
     let certs = cert_repo::list_all(&db)?;
     let access_lists_raw = access_repo::list_all_lists(&db)?;
+    let worker_processes = settings_repo::get(&db, "worker_processes")?
+        .unwrap_or_else(|| "2".to_string());
 
     let mut access_lists = Vec::new();
     for al in &access_lists_raw {
@@ -130,5 +132,11 @@ fn apply_config_inner(state: &AppState) -> Result<Vec<PortConflict>, AppError> {
 
     drop(db); // Release the lock before file I/O
 
-    config_engine::generate_all_configs(&state.data_dir, &rules, &certs, &access_lists)
+    config_engine::generate_all_configs_with_settings(
+        &state.data_dir,
+        &rules,
+        &certs,
+        &access_lists,
+        &worker_processes,
+    )
 }

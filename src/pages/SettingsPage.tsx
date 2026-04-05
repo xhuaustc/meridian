@@ -33,6 +33,7 @@ export function SettingsPage() {
   const [autoStartEngine, setAutoStartEngine] = useState(false);
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [logRetentionDays, setLogRetentionDays] = useState('7');
+  const [workerProcesses, setWorkerProcesses] = useState('2');
 
   useEffect(() => {
     // Load auto-start engine setting
@@ -42,6 +43,9 @@ export function SettingsPage() {
     // Load log retention days
     api.getSetting('log_retention_days').then((v) => {
       if (v) setLogRetentionDays(v);
+    });
+    api.getSetting('worker_processes').then((v) => {
+      if (v) setWorkerProcesses(v);
     });
   }, []);
 
@@ -199,6 +203,51 @@ export function SettingsPage() {
                 } catch (e) { addToast('error', formatError(e)); }
               }}
             />
+          </div>
+        </div>
+      </section>
+
+      {/* Performance */}
+      <section className="mb-8">
+        <h2 className="text-[13px] font-semibold mb-3 pb-2 border-b border-border">
+          {t('settings.performance')}
+        </h2>
+        <div className="flex items-center justify-between bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3">
+          <div>
+            <div className="text-[13px] font-medium">{t('settings.workerProcesses')}</div>
+            <div className="text-[11px] text-text-tertiary mt-0.5">{t('settings.workerProcessesDesc')}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                const next = workerProcesses === 'auto' ? '2' : 'auto';
+                setWorkerProcesses(next);
+                await api.setSetting('worker_processes', next);
+              }}
+              className={cn(
+                'px-3 py-[5px] text-[12px] border rounded-[var(--radius-sm)] cursor-pointer',
+                workerProcesses === 'auto'
+                  ? 'bg-accent-light text-accent border-accent font-medium'
+                  : 'bg-bg-primary text-text-secondary border-border hover:bg-bg-hover',
+              )}
+            >
+              {t('settings.workerProcessesAuto')}
+            </button>
+            {workerProcesses !== 'auto' && (
+              <input
+                type="number"
+                min="1"
+                max="64"
+                className="w-16 px-2 py-[5px] border border-border rounded-[var(--radius-sm)] text-[12px] bg-bg-primary text-text-primary text-center outline-none focus:border-accent"
+                value={workerProcesses}
+                onChange={(e) => setWorkerProcesses(e.target.value)}
+                onBlur={async () => {
+                  const val = Math.max(1, Math.min(64, parseInt(workerProcesses) || 2));
+                  setWorkerProcesses(String(val));
+                  await api.setSetting('worker_processes', String(val));
+                }}
+              />
+            )}
           </div>
         </div>
       </section>
