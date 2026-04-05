@@ -58,7 +58,8 @@ fn hide_window(window: &tauri::Window) {
 pub struct TrayMenuItems {
     status: MenuItem<tauri::Wry>,
     show: MenuItem<tauri::Wry>,
-    toggle: MenuItem<tauri::Wry>,
+    start: MenuItem<tauri::Wry>,
+    stop: MenuItem<tauri::Wry>,
     add_rule: MenuItem<tauri::Wry>,
     quit: MenuItem<tauri::Wry>,
 }
@@ -148,14 +149,13 @@ fn sync_tray_menu(data_dir: &Path, items: &TrayMenuItems, lang: &str) {
     };
     let _ = items.status.set_text(&status_text);
     let _ = items.show.set_text(if zh { "显示窗口" } else { "Show Window" });
-    let _ = items.toggle.set_text(match (running, zh) {
-        (true, true) => "停止",
-        (true, false) => "Stop",
-        (false, true) => "启动",
-        (false, false) => "Start",
-    });
+    let _ = items.start.set_text(if zh { "启动" } else { "Start" });
+    let _ = items.stop.set_text(if zh { "停止" } else { "Stop" });
     let _ = items.add_rule.set_text(if zh { "添加代理" } else { "Add Proxy" });
     let _ = items.quit.set_text(if zh { "退出" } else { "Quit" });
+
+    let _ = items.start.set_enabled(!running);
+    let _ = items.stop.set_enabled(running);
 }
 
 pub struct AppState {
@@ -255,7 +255,8 @@ pub fn run() {
                 .build(app)?;
             let sep0 = tauri::menu::PredefinedMenuItem::separator(app)?;
             let show_i = MenuItemBuilder::with_id("show", "-").build(app)?;
-            let toggle_i = MenuItemBuilder::with_id("toggle", "-").build(app)?;
+            let start_i = MenuItemBuilder::with_id("start", "-").build(app)?;
+            let stop_i = MenuItemBuilder::with_id("stop", "-").build(app)?;
             let sep1 = tauri::menu::PredefinedMenuItem::separator(app)?;
             let add_i = MenuItemBuilder::with_id("add_rule", "-").build(app)?;
             let quit_i = MenuItemBuilder::with_id("quit", "-").build(app)?;
@@ -264,7 +265,8 @@ pub fn run() {
                 .item(&status_i)
                 .item(&sep0)
                 .item(&show_i)
-                .item(&toggle_i)
+                .item(&start_i)
+                .item(&stop_i)
                 .item(&sep1)
                 .item(&add_i)
                 .item(&quit_i)
@@ -273,7 +275,8 @@ pub fn run() {
             let items = TrayMenuItems {
                 status: status_i,
                 show: show_i,
-                toggle: toggle_i,
+                start: start_i,
+                stop: stop_i,
                 add_rule: add_i,
                 quit: quit_i,
             };
@@ -315,13 +318,13 @@ pub fn run() {
                                 show_window(&w);
                             }
                         }
-                        "toggle" => {
-                            let running = nginx_manager::status(&state.data_dir).status == "running";
-                            if running {
-                                let _ = nginx_manager::stop(&state.data_dir);
-                            } else {
-                                let _ = nginx_manager::start(&state.data_dir);
-                            }
+                        "start" => {
+                            let _ = nginx_manager::start(&state.data_dir);
+                            let lang = get_language(&state);
+                            sync_tray_menu(&state.data_dir, &me_items, &lang);
+                        }
+                        "stop" => {
+                            let _ = nginx_manager::stop(&state.data_dir);
                             let lang = get_language(&state);
                             sync_tray_menu(&state.data_dir, &me_items, &lang);
                         }
