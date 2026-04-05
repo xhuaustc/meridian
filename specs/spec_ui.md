@@ -15,6 +15,7 @@
 | 2026-04-04 | Tray menu: remove reload, rename "新建规则"→"添加代理", left-click shows window only | UX refinement |
 | 2026-04-04 | ProxyForm: field error highlighting on save, default ports (HTTP→80, HTTPS→443) | UX improvement |
 | 2026-04-04 | Remove duplicate "Add Proxy" sidebar entry (keep dashboard button only) | UX cleanup |
+| 2026-04-05 | SettingsPage: add "Performance" section with worker processes setting | Performance tuning |
 
 ## Feature Description
 
@@ -121,9 +122,16 @@ Note: "Add Proxy" entry removed from sidebar (only accessible via dashboard butt
 | language | select | system locale | 界面语言 (zh / en) |
 | theme | select | system | 主题 (light / dark / system) |
 | auto_start_engine | toggle | false | 启动时自动启动引擎 |
+| worker_processes | "Auto" 按钮 + number (1-64) | 2 | 工作进程数（"auto" 或具体数字） |
 | log_retention_days | number (1-365) | 7 | 日志保留天数 |
 | nginx_path | file path | bundled | Nginx 可执行文件路径 |
 | data_dir | file path | platform default | 数据存储目录 |
+
+**Performance (性能):**
+- "Auto" 按钮：点击切换 worker_processes 在 "auto" 和数字模式之间。选中时高亮（`bg-accent-light text-accent`）
+- Number input (1-64)：仅在非 auto 模式时显示，onBlur 校验并持久化
+- Saves via `set_setting("worker_processes", value)`
+- 生效时机：下次配置生成（apply/start/restart）时写入 `nginx.conf` 的 `worker_processes` 指令
 
 **Log retention:**
 - Number input (1-365) with unit label "天/days"

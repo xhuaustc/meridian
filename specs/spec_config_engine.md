@@ -8,6 +8,9 @@
 | 2026-04-04 | Add custom JSON log_format (meridian, stream_meridian) for monitoring metrics | FEAT-002 merge |
 | 2026-04-04 | Add per-rule access_log directives for metrics collection | FEAT-002 merge |
 | 2026-04-04 | Add data_dir parameter to config generation functions | FEAT-002 merge |
+| 2026-04-05 | Add custom 502 error page (error_pages module) | UX improvement |
+| 2026-04-05 | Add configurable worker_processes setting (default "2", supports "auto") | Performance tuning |
+| 2026-04-05 | Generate nginx.conf on every app startup, not just auto-start | Bug fix: first-launch |
 
 ## Feature Description
 
@@ -25,7 +28,13 @@
 - **Type:** Internal function
 - **Input:** `(data_dir: &Path, rules: &[ProxyRule], certs: &[Certificate], access_lists: &[AccessListWithRules])`
 - **Output:** `Result<ConfigBundle>` — `ConfigBundle { main_conf: String, http_confs: Vec<(String, String)>, stream_confs: Vec<(String, String)> }`
-- **Notes:** `http_confs` 的 key 是文件名（如 `port_80.conf`），value 是配置内容。`data_dir` 用于生成日志文件路径。
+- **Notes:** `http_confs` 的 key 是文件名（如 `port_80.conf`），value 是配置内容。`data_dir` 用于生成日志文件路径。Worker processes 使用默认值 "2"。
+
+### `generate_all_configs_with_settings`
+- **Type:** Internal function
+- **Input:** `(data_dir, rules, certs, access_lists, worker_processes: &str)`
+- **Output:** 同 `generate_all_configs`
+- **Notes:** 支持传入 `worker_processes` 设置值（"auto" 或数字字符串）。由 `apply_config_inner` 和应用启动流程调用，从数据库读取 `worker_processes` 设置。
 
 ### `validate_port_conflicts`
 - **Type:** Internal function
@@ -54,7 +63,7 @@
 2. **同域名多路径**：同域名 + 同端口的不同 path_prefix 规则合并到同一个 `server` block 的多个 `location` 块
 3. **Stream 规则独立文件**：每条 Stream 规则生成独立配置 `stream.d/stream_{id}.conf`
 4. **禁用规则不生成配置**：`enabled=0` 的规则跳过
-5. **主配置模板**：`nginx.conf` 包含 `worker_processes auto;` + `events {}` + `http { log_format meridian ...; include conf.d/*.conf; }` + `stream { log_format stream_meridian ...; include stream.d/*.conf; }`
+5. **主配置模板**：`nginx.conf` 包含 `worker_processes {N};`（从设置读取，默认 "2"，支持 "auto"）+ `events {}` + `http { log_format meridian ...; include conf.d/*.conf; }` + `stream { log_format stream_meridian ...; include stream.d/*.conf; }`
 5a. **HTTP JSON 日志格式 (`meridian`)**：在 `http` block 中定义 `log_format meridian escape=json`，字段包括 `time`, `remote_addr`, `method`, `uri`, `status`, `body_bytes_sent`, `request_time`, `upstream_response_time`, `host`
 5b. **Stream JSON 日志格式 (`stream_meridian`)**：在 `stream` block 中定义 `log_format stream_meridian`，字段包括 `time`, `remote_addr`, `protocol`, `status`, `bytes_sent`, `bytes_received`, `session_time`
 5c. **Per-rule access log**：每个 HTTP `location` block 和 Stream `server` block 添加 `access_log "{data_dir}/nginx/logs/rule_{id}.access.log" meridian;`（HTTP 用 meridian 格式，Stream 用 stream_meridian 格式）
@@ -64,6 +73,8 @@
 8. **WebSocket 配置**：添加 `proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade";`
 9. **Access List 配置**：在 `server` 或 `location` block 中生成 `allow` / `deny` 指令，按 sort_order 排列，最后根据 default_policy 添加 `deny all` 或 `allow all`
 10. **Custom headers**：按 op 类型生成 `proxy_set_header` (add/modify) 或 `proxy_hide_header` (delete)
+11. **自定义 502 错误页面**：每个 HTTP server block 中添加 `proxy_intercept_errors on;` + `error_page 502 /502.html;` + 内部 location 指向 `nginx/html/502.html`。错误页面 HTML 在每次配置生成时由 `error_pages::write_error_pages()` 写入 `nginx/html/` 目录，使用与应用一致的视觉风格
+12. **启动时生成配置**：应用启动时始终调用 `generate_all_configs`，不论 `auto_start_engine` 是否开启。确保 `nginx.conf` 在 status 轮询前就存在，避免首次安装时报错
 
 ## Nginx Config Generation Examples
 
@@ -181,6 +192,25 @@ server {
 }
 ```
 
+### Custom 502 Error Page
+```nginx
+server {
+    listen 80;
+    server_name app.local;
+
+    proxy_intercept_errors on;
+    error_page 502 /502.html;
+    location = /502.html {
+        root "/path/to/data/nginx/html";
+        internal;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+    }
+}
+```
+
 ## Test Points
 
 | TP-ID | Category | Input | Expected Output | Notes |
@@ -204,6 +234,12 @@ server {
 | TP-017 | Boundary | 0 enabled rules | Empty conf.d/, empty stream.d/, valid main nginx.conf | |
 | TP-018 | Normal | Main nginx.conf includes correct paths | http { include conf.d/*.conf } + stream { include stream.d/*.conf } | |
 | TP-019 | Combination | Mix of HTTP + HTTPS + Stream + disabled rules | All correct configs, disabled skipped, aggregation correct | |
+| TP-020 | Normal | HTTP server block generation | Contains `proxy_intercept_errors on` + `error_page 502` + internal location | 502 error page |
+| TP-021 | Normal | `write_error_pages()` called during config generation | `nginx/html/502.html` file exists with valid HTML | |
+| TP-022 | Normal | `worker_processes` set to "auto" | `nginx.conf` contains `worker_processes auto;` | |
+| TP-023 | Normal | `worker_processes` set to "4" | `nginx.conf` contains `worker_processes 4;` | |
+| TP-024 | Boundary | `worker_processes` set to invalid string | Falls back to `worker_processes 2;` | |
+| TP-025 | Normal | App startup without auto-start | `nginx.conf` still generated (exists on disk) | First-launch fix |
 
 ## Implementation Map
 
@@ -212,6 +248,7 @@ server {
 | Main config generation | `src-tauri/src/config_engine/main_config.rs` | `generate_main_config()` | Includes meridian + stream_meridian log_format |
 | HTTP config generation | `src-tauri/src/config_engine/http_config.rs` | `generate_server_block()` | Per-rule + global access_log in each location |
 | Stream config generation | `src-tauri/src/config_engine/stream_config.rs` | `generate_stream_block()` | Per-rule access_log with stream_meridian format |
-| Config orchestration | `src-tauri/src/config_engine/mod.rs` | `generate_all_configs()` | Passes data_dir to sub-generators |
+| Error page generation | `src-tauri/src/config_engine/error_pages.rs` | `write_error_pages()` | Writes `nginx/html/502.html` |
+| Config orchestration | `src-tauri/src/config_engine/mod.rs` | `generate_all_configs()`, `generate_all_configs_with_settings()` | Passes data_dir + worker_processes to sub-generators |
 | Port conflict detection | `src-tauri/src/config_engine/mod.rs` | `validate_port_conflicts()` | |
 | Config write + rollback | `src-tauri/src/config_engine/mod.rs` | `write_configs()`, `restore_previous_configs()` | |

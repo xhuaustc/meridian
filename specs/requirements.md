@@ -126,6 +126,8 @@
 | FR-031 | 配置变更时先验证（nginx -t）再重载，验证失败需回滚并提示用户 | Must |
 | FR-032 | 显示 Nginx 引擎运行状态（运行中/已停止/异常） | Must |
 | FR-033 | 支持查看 Nginx access log 和 error log | Should |
+| FR-034 | 上游不可达时显示自定义 502 错误页面（品牌化，含重试按钮） | Should |
+| FR-035 | 支持配置工作进程数（默认 2，支持 auto），用于性能调优 | Should |
 
 ### Module: Configuration & Data (配置与数据)
 
@@ -164,7 +166,7 @@
 | NFR-003 | Memory | 管理界面空闲时内存占用 < 150MB（不含 Nginx 进程） |
 | NFR-004 | Reliability | 配置变更失败时自动回滚，不中断现有代理服务 |
 | NFR-005 | Data Safety | SQLite 数据库在每次 schema 变更前自动备份 |
-| NFR-006 | Cross-platform | Windows 10+, Ubuntu 20.04+/Debian 11+, macOS 12+ |
+| NFR-006 | Cross-platform | Windows 10+, Ubuntu 20.04+/Debian 11+, macOS 12+。Windows 上所有子进程使用 CREATE_NO_WINDOW 防止控制台窗口闪烁 |
 | NFR-007 | i18n | UI 文本 100% 覆盖中文和英文，支持运行时切换 |
 | NFR-008 | Accessibility | 键盘可完整操作所有核心功能 |
 

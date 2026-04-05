@@ -7,6 +7,8 @@
 | 2026-04-04 | Fix: quote all paths in nginx config for dirs with spaces (Application Support) | Bug fix |
 | 2026-04-04 | Fix: pass `-c` flag to stop/reload commands so nginx finds correct pid file | Bug fix |
 | 2026-04-04 | Add `append_to_error_log()`: writes lifecycle events to error.log for UI visibility | Enhancement |
+| 2026-04-05 | Fix: Windows `CREATE_NO_WINDOW` for all subprocess spawning (nginx, tasklist, powershell, taskkill) | Bug fix: console flashing |
+| 2026-04-05 | Fix: `status()` skips `test_config()` when nginx.conf doesn't exist | Bug fix: first-launch |
 
 ## Feature Description
 
@@ -83,6 +85,8 @@
 9. **路径引号处理**：生成的 nginx.conf 中所有文件路径（pid、error_log、access_log、include、ssl_certificate）使用双引号包裹，支持包含空格的目录（如 macOS `Application Support`）
 10. **stop/reload 传递 -c**：`nginx -s quit` 和 `nginx -s reload` 必须传入 `-c` 指向自定义 config 路径，否则 nginx 使用默认路径查找 pid 文件导致失败
 11. **生命周期日志**：nginx 启动成功/失败、停止成功/失败、重载成功/失败、配置测试失败均写入 error.log（带 `[meridian]` 标签和时间戳），便于用户在日志页面查看
+12. **Windows 隐藏控制台窗口**：所有通过 `Command` 启动的外部进程（nginx、tasklist、powershell、taskkill、where）在 Windows 上设置 `CREATE_NO_WINDOW` (0x08000000) 标志，防止前端轮询 status 时终端窗口反复闪烁。通过 `nginx_command()` 辅助函数统一处理 nginx 进程创建
+13. **状态查询容错**：`status()` 在 nginx 未运行且 `nginx.conf` 不存在时跳过 `test_config()` 调用，直接返回 "stopped" 状态。避免首次安装时配置文件未生成导致的报错循环
 
 ## Test Points
 
@@ -103,12 +107,15 @@
 | TP-013 | Boundary | init_first_run on existing data dir | No overwrite, no error | Idempotent |
 | TP-014 | Normal | App exit → nginx process cleanup | Nginx process terminated | |
 | TP-015 | Error | start_engine with missing nginx binary | ENGINE_START_FAILED with clear error message | |
+| TP-016 | Normal (Windows) | status() polling every 5s | No console window flashes | CREATE_NO_WINDOW |
+| TP-017 | Normal | status() when nginx.conf doesn't exist | Returns "stopped", no test_config() call | First-launch |
 
 ## Implementation Map
 
 | Spec Item | Code File(s) | Function / Class | Notes |
 |-----------|-------------|-----------------|-------|
-| Start/Stop/Reload/Status | `src-tauri/src/nginx_manager/mod.rs` | `start()`, `stop()`, `reload()`, `status()` | All pass `-c` and `-p` flags |
+| Start/Stop/Reload/Status | `src-tauri/src/nginx_manager/mod.rs` | `start()`, `stop()`, `reload()`, `status()` | All pass `-c` and `-p` flags; all use `nginx_command()` on Windows |
+| Windows console suppression | `src-tauri/src/nginx_manager/mod.rs` | `nginx_command()` | Sets `CREATE_NO_WINDOW` on Windows |
 | Config test | `src-tauri/src/nginx_manager/mod.rs` | `test_config()` | |
 | Nginx path discovery | `src-tauri/src/nginx_manager/mod.rs` | `get_bundled_nginx_path()` | Candidate list + PATH fallback |
 | Lifecycle logging | `src-tauri/src/nginx_manager/mod.rs` | `append_to_error_log()` | Writes to nginx error.log |
