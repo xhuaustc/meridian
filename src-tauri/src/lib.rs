@@ -109,16 +109,45 @@ fn get_language(state: &AppState) -> String {
 }
 
 /// Update all tray menu items to reflect current engine status and language.
+fn format_uptime(seconds: u64) -> String {
+    if seconds < 60 {
+        return format!("{}s", seconds);
+    }
+    let minutes = seconds / 60;
+    if minutes < 60 {
+        return format!("{}m", minutes);
+    }
+    let hours = minutes / 60;
+    let remaining_m = minutes % 60;
+    if hours < 24 {
+        return format!("{}h {}m", hours, remaining_m);
+    }
+    let days = hours / 24;
+    let remaining_h = hours % 24;
+    format!("{}d {}h", days, remaining_h)
+}
+
 fn sync_tray_menu(data_dir: &Path, items: &TrayMenuItems, lang: &str) {
-    let running = nginx_manager::status(data_dir).status == "running";
+    let status_info = nginx_manager::status(data_dir);
+    let running = status_info.status == "running";
     let zh = lang == "zh";
 
-    let _ = items.status.set_text(match (running, zh) {
-        (true, true) => "● 运行中",
-        (true, false) => "● Running",
-        (false, true) => "● 已停止",
-        (false, false) => "● Stopped",
-    });
+    let status_text = if running {
+        let uptime_str = status_info
+            .uptime_seconds
+            .map(|s| format!(" · {}", format_uptime(s)))
+            .unwrap_or_default();
+        if zh {
+            format!("● 运行中{}", uptime_str)
+        } else {
+            format!("● Running{}", uptime_str)
+        }
+    } else if zh {
+        "● 已停止".to_string()
+    } else {
+        "● Stopped".to_string()
+    };
+    let _ = items.status.set_text(&status_text);
     let _ = items.show.set_text(if zh { "显示窗口" } else { "Show Window" });
     let _ = items.start.set_text(if zh { "启动" } else { "Start" });
     let _ = items.stop.set_text(if zh { "停止" } else { "Stop" });
@@ -226,24 +255,20 @@ pub fn run() {
                 .build(app)?;
             let sep0 = tauri::menu::PredefinedMenuItem::separator(app)?;
             let show_i = MenuItemBuilder::with_id("show", "-").build(app)?;
-            let sep1 = tauri::menu::PredefinedMenuItem::separator(app)?;
             let start_i = MenuItemBuilder::with_id("start", "-").build(app)?;
             let stop_i = MenuItemBuilder::with_id("stop", "-").build(app)?;
-            let sep2 = tauri::menu::PredefinedMenuItem::separator(app)?;
+            let sep1 = tauri::menu::PredefinedMenuItem::separator(app)?;
             let add_i = MenuItemBuilder::with_id("add_rule", "-").build(app)?;
-            let sep3 = tauri::menu::PredefinedMenuItem::separator(app)?;
             let quit_i = MenuItemBuilder::with_id("quit", "-").build(app)?;
 
             let tray_menu = MenuBuilder::new(app)
                 .item(&status_i)
                 .item(&sep0)
                 .item(&show_i)
-                .item(&sep1)
                 .item(&start_i)
                 .item(&stop_i)
-                .item(&sep2)
+                .item(&sep1)
                 .item(&add_i)
-                .item(&sep3)
                 .item(&quit_i)
                 .build()?;
 
