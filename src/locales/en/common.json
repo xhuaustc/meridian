@@ -331,7 +331,8 @@
     "importConfirm": "Import will overwrite all existing data. Continue?",
     "backupSuccess": "Database backed up to {{path}}",
     "about": "About",
-    "version": "Version"
+    "version": "Version",
+    "author": "Author"
   },
   "monitor": {
     "title": "Monitor",

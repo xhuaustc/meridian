@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, Upload, Database } from 'lucide-react';
+import { getVersion } from '@tauri-apps/api/app';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { save, open } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
@@ -34,8 +35,11 @@ export function SettingsPage() {
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [logRetentionDays, setLogRetentionDays] = useState('7');
   const [workerProcesses, setWorkerProcesses] = useState('2');
+  const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
+    // Load app version
+    getVersion().then(setAppVersion);
     // Load auto-start engine setting
     api.getSetting('auto_start_engine').then((v) => setAutoStartEngine(v === 'true'));
     // Load launch-at-login state
@@ -331,8 +335,15 @@ export function SettingsPage() {
         <h2 className="text-[13px] font-semibold mb-3 pb-2 border-b border-border">
           {t('settings.about')}
         </h2>
-        <div className="text-[12px] text-text-secondary">
-          {t('settings.version')}: 0.1.0
+        <div className="space-y-2 text-[12px] text-text-secondary">
+          <div className="flex justify-between">
+            <span>{t('settings.version')}</span>
+            <span>{appVersion}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>{t('settings.author')}</span>
+            <span>Xiaohua Pan</span>
+          </div>
         </div>
       </section>
 

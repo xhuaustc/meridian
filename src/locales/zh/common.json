@@ -331,7 +331,8 @@
     "importConfirm": "导入将覆盖所有现有数据，确定继续？",
     "backupSuccess": "数据库已备份至 {{path}}",
     "about": "关于",
-    "version": "版本"
+    "version": "版本",
+    "author": "作者"
   },
   "monitor": {
     "title": "监控",

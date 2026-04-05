@@ -37,6 +37,11 @@
     ],
     "externalBin": [
       "binaries/nginx"
-    ]
+    ],
+    "macOS": {
+      "entitlements": "Entitlements.plist",
+      "signingIdentity": "Developer ID Application: Xiaohua Pan (3BVFM34328)",
+      "minimumSystemVersion": "10.15"
+    }
   }
 }
