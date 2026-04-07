@@ -126,6 +126,8 @@
     "pathPrefixPlaceholder": "e.g. /api",
     "pathPrefixHint": "Requests matching this prefix will be forwarded",
     "forwardTarget": "Forward Target",
+    "upstreamScheme": "Upstream Protocol",
+    "upstreamSchemeHint": "Use HTTPS if the upstream server requires encrypted connections",
     "upstreamHost": "Target Host",
     "upstreamHostPlaceholder": "127.0.0.1",
     "upstreamPort": "Target Port",

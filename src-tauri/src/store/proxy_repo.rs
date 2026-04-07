@@ -17,6 +17,7 @@ fn row_to_proxy(row: &rusqlite::Row) -> rusqlite::Result<ProxyRule> {
         path_prefix: row.get("path_prefix")?,
         upstream_host: row.get("upstream_host")?,
         upstream_port: row.get::<_, u32>("upstream_port")? as u16,
+        upstream_scheme: row.get::<_, String>("upstream_scheme")?,
         tls_mode: row.get::<_, String>("tls_mode")?,
         certificate_id: row.get("certificate_id")?,
         access_list_id: row.get("access_list_id")?,
@@ -49,13 +50,14 @@ pub fn create(conn: &Connection, input: &CreateProxyRule) -> Result<ProxyRule, A
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     let listen_host = input.listen_host.clone().unwrap_or_else(|| "0.0.0.0".to_string());
+    let upstream_scheme = input.upstream_scheme.clone().unwrap_or_else(|| "http".to_string());
     let tls_mode = input.tls_mode.clone().unwrap_or_else(|| "none".to_string());
     let websocket = if input.websocket.unwrap_or(false) { 1 } else { 0 };
     let sort_order = input.sort_order.unwrap_or(0);
 
     conn.execute(
-        "INSERT INTO proxy_rules (id, name, proxy_type, enabled, listen_port, listen_host, domain, path_prefix, upstream_host, upstream_port, tls_mode, certificate_id, access_list_id, websocket, custom_headers, upstream_targets, sort_order, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+        "INSERT INTO proxy_rules (id, name, proxy_type, enabled, listen_port, listen_host, domain, path_prefix, upstream_host, upstream_port, upstream_scheme, tls_mode, certificate_id, access_list_id, websocket, custom_headers, upstream_targets, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
         params![
             id,
             input.name,
@@ -66,6 +68,7 @@ pub fn create(conn: &Connection, input: &CreateProxyRule) -> Result<ProxyRule, A
             input.path_prefix,
             input.upstream_host,
             input.upstream_port as u32,
+            upstream_scheme,
             tls_mode,
             input.certificate_id,
             input.access_list_id,
@@ -97,6 +100,7 @@ pub fn update(conn: &Connection, id: &str, input: &UpdateProxyRule) -> Result<Pr
     let listen_host = input.listen_host.as_deref().unwrap_or(&existing.listen_host);
     let upstream_host = input.upstream_host.as_deref().unwrap_or(&existing.upstream_host);
     let upstream_port = input.upstream_port.unwrap_or(existing.upstream_port);
+    let upstream_scheme = input.upstream_scheme.as_deref().unwrap_or(&existing.upstream_scheme);
     let tls_mode = input.tls_mode.as_deref().unwrap_or(&existing.tls_mode);
     let websocket = input.websocket.unwrap_or(existing.websocket);
     let sort_order = input.sort_order.unwrap_or(existing.sort_order);
@@ -110,7 +114,7 @@ pub fn update(conn: &Connection, id: &str, input: &UpdateProxyRule) -> Result<Pr
     let upstream_targets: &Option<String> = &input.upstream_targets;
 
     conn.execute(
-        "UPDATE proxy_rules SET name=?1, proxy_type=?2, enabled=?3, listen_port=?4, listen_host=?5, domain=?6, path_prefix=?7, upstream_host=?8, upstream_port=?9, tls_mode=?10, certificate_id=?11, access_list_id=?12, websocket=?13, custom_headers=?14, upstream_targets=?15, sort_order=?16, updated_at=?17 WHERE id=?18",
+        "UPDATE proxy_rules SET name=?1, proxy_type=?2, enabled=?3, listen_port=?4, listen_host=?5, domain=?6, path_prefix=?7, upstream_host=?8, upstream_port=?9, upstream_scheme=?10, tls_mode=?11, certificate_id=?12, access_list_id=?13, websocket=?14, custom_headers=?15, upstream_targets=?16, sort_order=?17, updated_at=?18 WHERE id=?19",
         params![
             name,
             proxy_type,
@@ -121,6 +125,7 @@ pub fn update(conn: &Connection, id: &str, input: &UpdateProxyRule) -> Result<Pr
             path_prefix,
             upstream_host,
             upstream_port as u32,
+            upstream_scheme,
             tls_mode,
             certificate_id,
             access_list_id,

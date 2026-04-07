@@ -126,6 +126,8 @@
     "pathPrefixPlaceholder": "如：/api",
     "pathPrefixHint": "匹配此前缀的请求将被转发",
     "forwardTarget": "转发目标",
+    "upstreamScheme": "上游协议",
+    "upstreamSchemeHint": "如果上游服务器要求加密连接，请使用 HTTPS",
     "upstreamHost": "目标地址",
     "upstreamHostPlaceholder": "127.0.0.1",
     "upstreamPort": "目标端口",

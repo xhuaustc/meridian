@@ -3,6 +3,8 @@ export type TlsMode = 'none' | 'terminate' | 'passthrough';
 export type CertSource = 'upload' | 'self_signed' | 'acme';
 export type AccessPolicy = 'allow' | 'deny';
 
+export type UpstreamScheme = 'http' | 'https';
+
 export interface ProxyRule {
   id: string;
   name: string;
@@ -14,6 +16,7 @@ export interface ProxyRule {
   path_prefix: string | null;
   upstream_host: string;
   upstream_port: number;
+  upstream_scheme: UpstreamScheme;
   tls_mode: TlsMode;
   certificate_id: string | null;
   access_list_id: string | null;
@@ -40,6 +43,7 @@ export interface CreateProxyRule {
   path_prefix?: string | null;
   upstream_host: string;
   upstream_port: number;
+  upstream_scheme?: string;
   tls_mode?: string;
   certificate_id?: string | null;
   access_list_id?: string | null;
@@ -59,6 +63,7 @@ export interface UpdateProxyRule {
   path_prefix?: string | null;
   upstream_host?: string;
   upstream_port?: number;
+  upstream_scheme?: string;
   tls_mode?: string;
   certificate_id?: string | null;
   access_list_id?: string | null;

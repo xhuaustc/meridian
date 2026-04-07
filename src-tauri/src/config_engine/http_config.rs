@@ -124,19 +124,20 @@ pub fn generate_server_block(
         ));
 
         // Determine proxy_pass target: upstream block or single host
+        let scheme = &rule.upstream_scheme;
         let has_upstream = rule.upstream_targets.as_deref()
             .and_then(|j| parse_upstream_targets(j))
             .is_some();
         if has_upstream {
             let name = upstream_name(&rule.id);
             out.push_str(&format!(
-                "        proxy_pass http://{};\n",
-                name
+                "        proxy_pass {}://{};\n",
+                scheme, name
             ));
         } else {
             out.push_str(&format!(
-                "        proxy_pass http://{}:{};\n",
-                rule.upstream_host, rule.upstream_port
+                "        proxy_pass {}://{}:{};\n",
+                scheme, rule.upstream_host, rule.upstream_port
             ));
         }
 

@@ -193,6 +193,13 @@ fn run_migrations(conn: &Connection) -> Result<(), AppError> {
         info!("Migrated proxy_rules table with upstream_targets column");
     }
 
+    if !proxy_cols.iter().any(|c| c == "upstream_scheme") {
+        conn.execute_batch(
+            "ALTER TABLE proxy_rules ADD COLUMN upstream_scheme TEXT NOT NULL DEFAULT 'http';",
+        )?;
+        info!("Migrated proxy_rules table with upstream_scheme column");
+    }
+
     info!("Database migrations complete");
     Ok(())
 }

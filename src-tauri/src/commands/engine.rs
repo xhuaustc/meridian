@@ -92,6 +92,7 @@ pub async fn check_port_conflict(
         path_prefix,
         upstream_host: "127.0.0.1".to_string(),
         upstream_port: 80,
+        upstream_scheme: "http".to_string(),
         tls_mode: "none".to_string(),
         certificate_id: None,
         access_list_id: None,

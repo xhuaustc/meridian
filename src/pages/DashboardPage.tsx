@@ -38,7 +38,7 @@ function getRoute(rule: ProxyRule): { from: string; to: string; href: string | n
   const from = isStream
     ? `:${rule.listen_port}`
     : `${scheme}://${rule.domain || ''}:${rule.listen_port}${rule.path_prefix || '/'}`;
-  const to = `${rule.upstream_host}:${rule.upstream_port}`;
+  const to = `${rule.upstream_scheme}://${rule.upstream_host}:${rule.upstream_port}`;
   let href: string | null = null;
   if (!isStream && rule.domain) {
     const defaultPort = scheme === 'https' ? 443 : 80;

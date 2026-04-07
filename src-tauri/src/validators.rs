@@ -422,6 +422,7 @@ mod tests {
             path_prefix: None,
             upstream_host: "127.0.0.1".to_string(),
             upstream_port: 3000,
+            upstream_scheme: None,
             tls_mode: None,
             certificate_id: None,
             access_list_id: None,

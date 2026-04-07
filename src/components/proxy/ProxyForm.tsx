@@ -14,7 +14,7 @@ import { useApiError } from '../../hooks/useApiError';
 import { checkPortConflict, checkHostnameExists, createHost } from '../../lib/api';
 import { Dialog } from '../ui/Dialog';
 import { cn } from '../../lib/utils';
-import type { ProxyRule, ProxyType, TlsMode, CreateProxyRule, UpdateProxyRule, UpstreamTarget } from '../../types';
+import type { ProxyRule, ProxyType, TlsMode, CreateProxyRule, UpdateProxyRule, UpstreamTarget, UpstreamScheme } from '../../types';
 
 type FormProxyType = 'http' | 'https' | 'tcp' | 'udp';
 
@@ -62,6 +62,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
   const [pathPrefix, setPathPrefix] = useState(rule?.path_prefix ?? '');
   const [upstreamHost, setUpstreamHost] = useState(rule?.upstream_host ?? '');
   const [upstreamPort, setUpstreamPort] = useState(rule?.upstream_port?.toString() ?? '');
+  const [upstreamScheme, setUpstreamScheme] = useState<UpstreamScheme>(rule?.upstream_scheme ?? 'http');
   const [tlsMode, setTlsMode] = useState<TlsMode>(rule?.tls_mode ?? 'none');
   const [certificateId, setCertificateId] = useState(rule?.certificate_id ?? '');
   const [accessListId, setAccessListId] = useState(rule?.access_list_id ?? '');
@@ -213,6 +214,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
           path_prefix: isStream ? null : pathPrefix || null,
           upstream_host: upstreamHost,
           upstream_port: parseInt(upstreamPort),
+          upstream_scheme: upstreamScheme,
           tls_mode: tlsMode,
           certificate_id: tlsMode === 'terminate' ? certificateId || null : null,
           access_list_id: accessListId || null,
@@ -232,6 +234,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
           path_prefix: isStream ? null : pathPrefix || null,
           upstream_host: upstreamHost,
           upstream_port: parseInt(upstreamPort),
+          upstream_scheme: upstreamScheme,
           tls_mode: tlsMode,
           certificate_id: tlsMode === 'terminate' ? certificateId || null : null,
           access_list_id: accessListId || null,
@@ -418,6 +421,34 @@ export function ProxyForm({ rule }: ProxyFormProps) {
             }} />
           </div>
         </div>
+
+        {!isStream && (
+          <div className="mb-4">
+            <label className="block text-[12px] font-medium text-text-secondary mb-1">
+              {t('proxyForm.upstreamScheme')}
+            </label>
+            <div className="flex border border-border rounded-[var(--radius-sm)] overflow-hidden w-fit">
+              {(['http', 'https'] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setUpstreamScheme(s)}
+                  className={cn(
+                    'py-[5px] px-4 text-center text-[12px] cursor-pointer border-r border-border last:border-r-0',
+                    upstreamScheme === s
+                      ? 'bg-accent-light text-accent font-medium'
+                      : 'bg-bg-secondary text-text-secondary hover:bg-bg-hover',
+                  )}
+                >
+                  {s.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-text-tertiary mt-1">
+              {t('proxyForm.upstreamSchemeHint')}
+            </p>
+          </div>
+        )}
 
         {!multiUpstream ? (
           /* Single target mode */
