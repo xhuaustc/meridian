@@ -134,6 +134,11 @@ jobs:
             ls -lh src-tauri/binaries/nginx-${{ matrix.rust-target }}
           fi
 
+      - name: Remove macOS sidecar ad-hoc signature
+        if: runner.os == 'macOS'
+        run: |
+          codesign --remove-signature src-tauri/binaries/nginx-${{ matrix.rust-target }} || true
+
       # --- Build Tauri app ---
 
       # macOS: import Apple certificate for code signing
@@ -146,10 +151,13 @@ jobs:
           echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
           KEYCHAIN_PASSWORD=$(openssl rand -hex 12)
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security list-keychains -d user -s build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -A -T /usr/bin/codesign -T /usr/bin/productbuild
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          security find-identity -v -p codesigning build.keychain
           rm certificate.p12
 
       - name: Build Tauri app
