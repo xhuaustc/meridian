@@ -97,9 +97,14 @@ fn write_hosts_macos(content: &str, path: &str) -> Result<(), AppError> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("User canceled") || stderr.contains("-128") {
-            return Err(AppError::Validation("Permission denied: user cancelled authentication".to_string()));
+            return Err(AppError::Validation(
+                "Permission denied: user cancelled authentication".to_string(),
+            ));
         }
-        return Err(AppError::Config(format!("Failed to write hosts file: {}", stderr)));
+        return Err(AppError::Config(format!(
+            "Failed to write hosts file: {}",
+            stderr
+        )));
     }
 
     info!("Hosts file updated successfully");
@@ -125,9 +130,14 @@ fn write_hosts_linux(content: &str, path: &str) -> Result<(), AppError> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("dismissed") || stderr.contains("Not authorized") {
-            return Err(AppError::Validation("Permission denied: user cancelled authentication".to_string()));
+            return Err(AppError::Validation(
+                "Permission denied: user cancelled authentication".to_string(),
+            ));
         }
-        return Err(AppError::Config(format!("Failed to write hosts file: {}", stderr)));
+        return Err(AppError::Config(format!(
+            "Failed to write hosts file: {}",
+            stderr
+        )));
     }
 
     info!("Hosts file updated successfully");
@@ -143,7 +153,8 @@ fn write_hosts_windows(content: &str, path: &str) -> Result<(), AppError> {
         Err(e) => {
             warn!("Direct write failed ({}), need administrator privileges", e);
             Err(AppError::Validation(
-                "Permission denied: please run Meridian as administrator to manage hosts".to_string(),
+                "Permission denied: please run Meridian as administrator to manage hosts"
+                    .to_string(),
             ))
         }
     }
@@ -152,9 +163,8 @@ fn write_hosts_windows(content: &str, path: &str) -> Result<(), AppError> {
 /// Read the current hosts file content.
 pub fn read_hosts_file() -> Result<String, AppError> {
     let path = hosts_file_path();
-    std::fs::read_to_string(path).map_err(|e| {
-        AppError::Config(format!("Failed to read hosts file '{}': {}", path, e))
-    })
+    std::fs::read_to_string(path)
+        .map_err(|e| AppError::Config(format!("Failed to read hosts file '{}': {}", path, e)))
 }
 
 /// Sync enabled host entries to the system hosts file.

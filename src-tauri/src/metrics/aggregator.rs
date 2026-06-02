@@ -43,9 +43,9 @@ pub struct StatusGroup {
 /// Determine bucket size in seconds based on time range.
 fn bucket_seconds(time_range: &str) -> i64 {
     match time_range {
-        "1h" => 60,        // 1 minute buckets
-        "6h" => 300,       // 5 minute buckets
-        "24h" => 900,      // 15 minute buckets
+        "1h" => 60,   // 1 minute buckets
+        "6h" => 300,  // 5 minute buckets
+        "24h" => 900, // 15 minute buckets
         _ => 60,
     }
 }
@@ -171,8 +171,7 @@ pub fn aggregate(entries: &[LogEntry], time_range: &str) -> ProxyMetrics {
     let time_series: Vec<MetricBucket> = buckets
         .into_iter()
         .map(|(ts, (reqs, errs, lat, bytes))| {
-            let dt = DateTime::from_timestamp(ts, 0)
-                .unwrap_or_else(|| Utc::now());
+            let dt = DateTime::from_timestamp(ts, 0).unwrap_or_else(|| Utc::now());
             MetricBucket {
                 timestamp: dt.to_rfc3339(),
                 requests: reqs,
@@ -206,11 +205,7 @@ pub fn aggregate(entries: &[LogEntry], time_range: &str) -> ProxyMetrics {
 }
 
 /// Compute metrics for a specific rule or all rules.
-pub fn compute_metrics(
-    data_dir: &Path,
-    rule_id: Option<&str>,
-    time_range: &str,
-) -> ProxyMetrics {
+pub fn compute_metrics(data_dir: &Path, rule_id: Option<&str>, time_range: &str) -> ProxyMetrics {
     let logs_dir = data_dir.join("nginx/logs");
     let start = range_start(time_range);
 

@@ -28,31 +28,25 @@ pub fn create_provider(
 ) -> Result<Box<dyn DnsProvider>, AppError> {
     match provider {
         "cloudflare" => {
-            let cred: cloudflare::CloudflareCredential =
-                serde_json::from_str(credentials_json).map_err(|e| {
+            let cred: cloudflare::CloudflareCredential = serde_json::from_str(credentials_json)
+                .map_err(|e| {
                     AppError::Validation(format!("Invalid Cloudflare credentials: {}", e))
                 })?;
             Ok(Box::new(cloudflare::CloudflareProvider::new(cred)))
         }
         "alidns" => {
-            let cred: alidns::AlidnsCredential =
-                serde_json::from_str(credentials_json).map_err(|e| {
-                    AppError::Validation(format!("Invalid Alidns credentials: {}", e))
-                })?;
+            let cred: alidns::AlidnsCredential = serde_json::from_str(credentials_json)
+                .map_err(|e| AppError::Validation(format!("Invalid Alidns credentials: {}", e)))?;
             Ok(Box::new(alidns::AlidnsProvider::new(cred)))
         }
         "dnspod" => {
-            let cred: dnspod::DnspodCredential =
-                serde_json::from_str(credentials_json).map_err(|e| {
-                    AppError::Validation(format!("Invalid DNSPod credentials: {}", e))
-                })?;
+            let cred: dnspod::DnspodCredential = serde_json::from_str(credentials_json)
+                .map_err(|e| AppError::Validation(format!("Invalid DNSPod credentials: {}", e)))?;
             Ok(Box::new(dnspod::DnspodProvider::new(cred)))
         }
         "route53" => {
-            let cred: route53::Route53Credential =
-                serde_json::from_str(credentials_json).map_err(|e| {
-                    AppError::Validation(format!("Invalid Route53 credentials: {}", e))
-                })?;
+            let cred: route53::Route53Credential = serde_json::from_str(credentials_json)
+                .map_err(|e| AppError::Validation(format!("Invalid Route53 credentials: {}", e)))?;
             Ok(Box::new(route53::Route53Provider::new(cred)))
         }
         _ => Err(AppError::Validation(format!(
@@ -66,8 +60,8 @@ pub fn create_provider(
 pub fn validate_credentials(provider: &str, credentials_json: &str) -> Result<(), AppError> {
     match provider {
         "cloudflare" => {
-            let _: cloudflare::CloudflareCredential =
-                serde_json::from_str(credentials_json).map_err(|e| {
+            let _: cloudflare::CloudflareCredential = serde_json::from_str(credentials_json)
+                .map_err(|e| {
                     AppError::Validation(format!("Invalid Cloudflare credentials: {}", e))
                 })?;
         }
@@ -79,7 +73,10 @@ pub fn validate_credentials(provider: &str, credentials_json: &str) -> Result<()
                     "Alidns credentials require 'access_key_id'".to_string(),
                 ));
             }
-            if v.get("access_key_secret").and_then(|v| v.as_str()).is_none() {
+            if v.get("access_key_secret")
+                .and_then(|v| v.as_str())
+                .is_none()
+            {
                 return Err(AppError::Validation(
                     "Alidns credentials require 'access_key_secret'".to_string(),
                 ));
@@ -107,7 +104,10 @@ pub fn validate_credentials(provider: &str, credentials_json: &str) -> Result<()
                     "Route53 credentials require 'access_key_id'".to_string(),
                 ));
             }
-            if v.get("secret_access_key").and_then(|v| v.as_str()).is_none() {
+            if v.get("secret_access_key")
+                .and_then(|v| v.as_str())
+                .is_none()
+            {
                 return Err(AppError::Validation(
                     "Route53 credentials require 'secret_access_key'".to_string(),
                 ));

@@ -48,6 +48,37 @@ function getRoute(rule: ProxyRule): { from: string; to: string; href: string | n
   return { from, to, href };
 }
 
+function isLocalDevDomain(domain: string): boolean {
+  return (
+    domain.endsWith('.local') ||
+    domain.endsWith('.test') ||
+    domain.endsWith('.localhost') ||
+    !domain.includes('.')
+  );
+}
+
+function getRuleHealth(
+  rule: ProxyRule,
+  certIds: Set<string>,
+  hostnames: Set<string>,
+): { labelKey: string; tone: 'success' | 'warning' | 'muted' } {
+  if (!rule.enabled) {
+    return { labelKey: 'dashboard.statusOff', tone: 'muted' };
+  }
+  if (rule.tls_mode === 'terminate' && rule.certificate_id && !certIds.has(rule.certificate_id)) {
+    return { labelKey: 'dashboard.statusCertMissing', tone: 'warning' };
+  }
+  if (
+    rule.proxy_type === 'http' &&
+    rule.domain &&
+    isLocalDevDomain(rule.domain) &&
+    !hostnames.has(rule.domain)
+  ) {
+    return { labelKey: 'dashboard.statusHostsMissing', tone: 'warning' };
+  }
+  return { labelKey: 'dashboard.statusActive', tone: 'success' };
+}
+
 export function DashboardPage() {
   const { t } = useTranslation('common');
   const navigate = useNavigate();
@@ -97,6 +128,9 @@ export function DashboardPage() {
     const active = proxies.filter((p) => p.enabled).length;
     return { active, total: proxies.length };
   }, [proxies]);
+
+  const certIds = useMemo(() => new Set(certificates.map((cert) => cert.id)), [certificates]);
+  const hostnames = useMemo(() => new Set(hostEntries.map((entry) => entry.hostname)), [hostEntries]);
 
   const handleToggle = async (rule: ProxyRule) => {
     try {
@@ -149,10 +183,12 @@ export function DashboardPage() {
         path_prefix: rule.path_prefix,
         upstream_host: rule.upstream_host,
         upstream_port: rule.upstream_port,
+        upstream_scheme: rule.upstream_scheme,
         tls_mode: rule.tls_mode,
         certificate_id: rule.certificate_id,
         access_list_id: rule.access_list_id,
         websocket: rule.websocket,
+        keep_alive: rule.keep_alive,
         custom_headers: rule.custom_headers,
         upstream_targets: rule.upstream_targets,
       });
@@ -423,6 +459,7 @@ export function DashboardPage() {
                 {filtered.map((rule) => {
                   const displayType = getDisplayType(rule);
                   const route = getRoute(rule);
+                  const health = getRuleHealth(rule, certIds, hostnames);
                   return (
                     <tr
                       key={rule.id}
@@ -469,18 +506,20 @@ export function DashboardPage() {
                         <span
                           className={cn(
                             'inline-flex items-center gap-1.5 text-[12px]',
-                            rule.enabled ? 'text-success' : 'text-text-tertiary',
+                            health.tone === 'success' && 'text-success',
+                            health.tone === 'warning' && 'text-warning',
+                            health.tone === 'muted' && 'text-text-tertiary',
                           )}
                         >
                           <span
                             className={cn(
                               'w-[7px] h-[7px] rounded-full',
-                              rule.enabled ? 'bg-success' : 'bg-text-tertiary',
+                              health.tone === 'success' && 'bg-success',
+                              health.tone === 'warning' && 'bg-warning',
+                              health.tone === 'muted' && 'bg-text-tertiary',
                             )}
                           />
-                          {rule.enabled
-                            ? t('dashboard.statusActive')
-                            : t('dashboard.statusOff')}
+                          {t(health.labelKey)}
                         </span>
                       </td>
                       <td className="px-4 py-3">

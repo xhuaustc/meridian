@@ -4,8 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use instant_acme::{
-    Account, AccountCredentials, ChallengeType, Identifier, NewAccount, NewOrder,
-    OrderStatus,
+    Account, AccountCredentials, ChallengeType, Identifier, NewAccount, NewOrder, OrderStatus,
 };
 use rcgen::{Certificate, CertificateParams};
 use tracing::{info, warn};
@@ -75,10 +74,7 @@ pub async fn request_certificate(
     dns_provider: &dyn DnsProvider,
     data_dir: &Path,
 ) -> Result<AcmeCertResult, AppError> {
-    let identifiers: Vec<Identifier> = domains
-        .iter()
-        .map(|d| Identifier::Dns(d.clone()))
-        .collect();
+    let identifiers: Vec<Identifier> = domains.iter().map(|d| Identifier::Dns(d.clone())).collect();
 
     let mut order = account
         .new_order(&NewOrder {
@@ -245,9 +241,7 @@ async fn do_challenges(
         order
             .set_challenge_ready(&challenge.url)
             .await
-            .map_err(|e| {
-                AppError::Acme(format!("Failed to set challenge ready: {}", e))
-            })?;
+            .map_err(|e| AppError::Acme(format!("Failed to set challenge ready: {}", e)))?;
     }
 
     // Wait for order to become ready

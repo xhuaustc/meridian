@@ -31,21 +31,22 @@ static WAS_RUNNING: AtomicBool = AtomicBool::new(false);
 
 /// Spawn a background health check that emits "nginx-status-changed" event when nginx crashes.
 pub fn spawn_health_check(data_dir: PathBuf, app_handle: tauri::AppHandle) {
-    std::thread::spawn(move || {
-        loop {
-            std::thread::sleep(std::time::Duration::from_secs(15));
-            let current_status = status(&data_dir);
-            let is_running = current_status.status == "running";
-            let was_running = WAS_RUNNING.swap(is_running, Ordering::Relaxed);
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(15));
+        let current_status = status(&data_dir);
+        let is_running = current_status.status == "running";
+        let was_running = WAS_RUNNING.swap(is_running, Ordering::Relaxed);
 
-            if was_running && !is_running {
-                warn!("nginx stopped unexpectedly");
-                append_to_error_log(&data_dir, "nginx process stopped unexpectedly");
-                let _ = app_handle.emit("nginx-status-changed", serde_json::json!({
+        if was_running && !is_running {
+            warn!("nginx stopped unexpectedly");
+            append_to_error_log(&data_dir, "nginx process stopped unexpectedly");
+            let _ = app_handle.emit(
+                "nginx-status-changed",
+                serde_json::json!({
                     "status": current_status.status,
                     "error_message": current_status.error_message,
-                }));
-            }
+                }),
+            );
         }
     });
 }
@@ -175,17 +176,26 @@ pub fn cleanup_stale_process(data_dir: &Path) {
         info!("Removing stale nginx PID file (pid {} not running)", pid);
         append_to_error_log(
             data_dir,
-            &format!("Removed stale nginx PID file on startup (pid {} not running)", pid),
+            &format!(
+                "Removed stale nginx PID file on startup (pid {} not running)",
+                pid
+            ),
         );
         let _ = fs::remove_file(&pid_file);
         return;
     }
 
     // Process is still alive — attempt graceful stop.
-    info!("Found running nginx process (pid {}) from previous session, stopping it", pid);
+    info!(
+        "Found running nginx process (pid {}) from previous session, stopping it",
+        pid
+    );
     append_to_error_log(
         data_dir,
-        &format!("Found running nginx process (pid {}) from previous session, attempting graceful stop", pid),
+        &format!(
+            "Found running nginx process (pid {}) from previous session, attempting graceful stop",
+            pid
+        ),
     );
 
     if let Ok(nginx) = get_bundled_nginx_path() {
@@ -213,11 +223,17 @@ pub fn cleanup_stale_process(data_dir: &Path) {
         info!("Stale nginx process (pid {}) stopped gracefully", pid);
         append_to_error_log(
             data_dir,
-            &format!("Stale nginx process (pid {}) stopped gracefully on startup", pid),
+            &format!(
+                "Stale nginx process (pid {}) stopped gracefully on startup",
+                pid
+            ),
         );
     } else {
         // Force kill.
-        info!("Stale nginx process (pid {}) did not stop gracefully, force killing", pid);
+        info!(
+            "Stale nginx process (pid {}) did not stop gracefully, force killing",
+            pid
+        );
         append_to_error_log(
             data_dir,
             &format!("Force killing stale nginx process (pid {}) on startup", pid),
@@ -225,10 +241,7 @@ pub fn cleanup_stale_process(data_dir: &Path) {
 
         #[cfg(not(windows))]
         {
-            let _ = Command::new("kill")
-                .arg("-9")
-                .arg(pid.to_string())
-                .output();
+            let _ = Command::new("kill").arg("-9").arg(pid.to_string()).output();
         }
         #[cfg(windows)]
         {
@@ -277,8 +290,7 @@ fn is_process_running(pid: u32) -> bool {
         .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map(|o| {
-            o.status.success()
-                && String::from_utf8_lossy(&o.stdout).contains(&pid.to_string())
+            o.status.success() && String::from_utf8_lossy(&o.stdout).contains(&pid.to_string())
         })
         .unwrap_or(false)
 }
@@ -492,7 +504,10 @@ fn get_process_uptime(pid: u32) -> Option<u64> {
         .args([
             "-NoProfile",
             "-Command",
-            &format!("(Get-Process -Id {}).StartTime.ToString('yyyyMMddHHmmss')", pid),
+            &format!(
+                "(Get-Process -Id {}).StartTime.ToString('yyyyMMddHHmmss')",
+                pid
+            ),
         ])
         .creation_flags(CREATE_NO_WINDOW)
         .output()
@@ -511,8 +526,8 @@ fn get_process_uptime(pid: u32) -> Option<u64> {
         let min: u32 = stdout[10..12].parse().ok()?;
         let sec: u32 = stdout[12..14].parse().ok()?;
 
-        let created = chrono::NaiveDate::from_ymd_opt(year, month, day)?
-            .and_hms_opt(hour, min, sec)?;
+        let created =
+            chrono::NaiveDate::from_ymd_opt(year, month, day)?.and_hms_opt(hour, min, sec)?;
         let now = chrono::Local::now().naive_local();
         let duration = now.signed_duration_since(created);
         return Some(duration.num_seconds().max(0) as u64);

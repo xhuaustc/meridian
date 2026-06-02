@@ -30,8 +30,17 @@ A local Nginx proxy manager with a GUI for managing reverse proxies, SSL certifi
 
 - [Node.js](https://nodejs.org/) >= 18
 - [Rust](https://www.rust-lang.org/tools/install) (stable)
-- [Nginx](https://nginx.org/) 已安装并可通过命令行访问
 - Tauri v2 系统依赖 — 参见 [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites/)
+
+Meridian 使用应用内管理的 Nginx sidecar。开发或打包前请准备 sidecar binary：
+
+```bash
+# macOS / Linux
+./scripts/prepare-nginx.sh
+
+# Windows
+.\scripts\prepare-nginx.ps1
+```
 
 ## 快速开始 / Getting Started
 

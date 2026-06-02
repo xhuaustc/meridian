@@ -93,7 +93,13 @@ mod tests {
     use super::*;
     use crate::store::models::ProxyRule;
 
-    fn make_rule(id: &str, proxy_type: &str, port: u16, domain: Option<&str>, path: Option<&str>) -> ProxyRule {
+    fn make_rule(
+        id: &str,
+        proxy_type: &str,
+        port: u16,
+        domain: Option<&str>,
+        path: Option<&str>,
+    ) -> ProxyRule {
         ProxyRule {
             id: id.to_string(),
             name: format!("rule-{}", id),
@@ -105,10 +111,12 @@ mod tests {
             path_prefix: path.map(String::from),
             upstream_host: "127.0.0.1".to_string(),
             upstream_port: 3000,
+            upstream_scheme: "http".to_string(),
             tls_mode: "none".to_string(),
             certificate_id: None,
             access_list_id: None,
             websocket: false,
+            keep_alive: false,
             custom_headers: None,
             upstream_targets: None,
             sort_order: 0,

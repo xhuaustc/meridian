@@ -64,10 +64,7 @@ pub async fn import_certificate(
 }
 
 #[tauri::command]
-pub async fn delete_certificate(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
+pub async fn delete_certificate(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
     let db = state.get_conn()?;
 
     // Check for referencing proxy rules (Fix 2)
@@ -106,12 +103,10 @@ pub async fn export_certificate(
         ));
     }
 
-    let cert_pem = std::fs::read(&cert.cert_path).map_err(|e| {
-        AppError::Certificate(format!("Failed to read certificate file: {}", e))
-    })?;
-    let key_pem = std::fs::read(&cert.key_path).map_err(|e| {
-        AppError::Certificate(format!("Failed to read private key file: {}", e))
-    })?;
+    let cert_pem = std::fs::read(&cert.cert_path)
+        .map_err(|e| AppError::Certificate(format!("Failed to read certificate file: {}", e)))?;
+    let key_pem = std::fs::read(&cert.key_path)
+        .map_err(|e| AppError::Certificate(format!("Failed to read private key file: {}", e)))?;
 
     // Sanitize domain for filename: replace * with _wildcard
     let safe_domain = cert.domain.replace('*', "_wildcard");

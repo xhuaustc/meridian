@@ -72,7 +72,13 @@ pub async fn update_host(
             }
         }
 
-        hosts_repo::update(&db, &id, ip.as_deref(), hostname.as_deref(), comment.as_deref())?
+        hosts_repo::update(
+            &db,
+            &id,
+            ip.as_deref(),
+            hostname.as_deref(),
+            comment.as_deref(),
+        )?
     };
 
     if let Err(e) = sync_hosts_to_system(&state) {
@@ -83,10 +89,7 @@ pub async fn update_host(
 }
 
 #[tauri::command]
-pub async fn delete_host(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
+pub async fn delete_host(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
     {
         let db = state.get_conn()?;
         hosts_repo::delete(&db, &id)?;
@@ -136,9 +139,7 @@ pub async fn check_hostname_exists(
 }
 
 #[tauri::command]
-pub async fn sync_hosts_file(
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
+pub async fn sync_hosts_file(state: State<'_, AppState>) -> Result<(), AppError> {
     sync_hosts_to_system(&state)
 }
 

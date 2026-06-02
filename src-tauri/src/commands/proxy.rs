@@ -4,7 +4,9 @@ use tauri::State;
 
 use crate::config_engine;
 use crate::error::AppError;
-use crate::store::models::{CreateProxyRule, ProxyRule, UpdateProxyRule};
+use crate::store::models::{
+    AccessList, AccessRule, Certificate, CreateProxyRule, ProxyRule, UpdateProxyRule,
+};
 use crate::store::{access_repo, cert_repo, proxy_repo};
 use crate::validators;
 use crate::AppState;
@@ -24,12 +26,7 @@ pub async fn list_proxies(
     state: State<'_, AppState>,
 ) -> Result<ProxyListResponse, AppError> {
     let db = state.get_conn()?;
-    let rules = proxy_repo::list_filtered(
-        &db,
-        proxy_type.as_deref(),
-        enabled,
-        search.as_deref(),
-    )?;
+    let rules = proxy_repo::list_filtered(&db, proxy_type.as_deref(), enabled, search.as_deref())?;
     let stats = proxy_repo::count_by_type(&db)?;
     Ok(ProxyListResponse { rules, stats })
 }
@@ -46,16 +43,7 @@ pub async fn create_proxy(
     state: State<'_, AppState>,
 ) -> Result<ProxyRule, AppError> {
     validators::validate_create_proxy(&input)?;
-
-    let rule = {
-        let db = state.get_conn()?;
-        proxy_repo::create(&db, &input)?
-    };
-
-    // Apply config and reload
-    let _ = apply_and_reload_inner(&state);
-
-    Ok(rule)
+    apply_proxy_change(&state, |db| proxy_repo::create(db, &input))
 }
 
 #[tauri::command]
@@ -71,28 +59,12 @@ pub async fn update_proxy(
     };
     validators::validate_update_proxy_merged(&input, &existing)?;
 
-    let rule = {
-        let db = state.get_conn()?;
-        proxy_repo::update(&db, &id, &input)?
-    };
-
-    // Apply config and reload
-    let _ = apply_and_reload_inner(&state);
-
-    Ok(rule)
+    apply_proxy_change(&state, |db| proxy_repo::update(db, &id, &input))
 }
 
 #[tauri::command]
 pub async fn delete_proxy(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    {
-        let db = state.get_conn()?;
-        proxy_repo::delete(&db, &id)?;
-    }
-
-    // Apply config and reload
-    let _ = apply_and_reload_inner(&state);
-
-    Ok(())
+    apply_proxy_change(&state, |db| proxy_repo::delete(db, &id))
 }
 
 #[tauri::command]
@@ -101,15 +73,7 @@ pub async fn toggle_proxy(
     enabled: bool,
     state: State<'_, AppState>,
 ) -> Result<ProxyRule, AppError> {
-    let rule = {
-        let db = state.get_conn()?;
-        proxy_repo::toggle_enabled(&db, &id, enabled)?
-    };
-
-    // Apply config and reload
-    let _ = apply_and_reload_inner(&state);
-
-    Ok(rule)
+    apply_proxy_change(&state, |db| proxy_repo::toggle_enabled(db, &id, enabled))
 }
 
 #[tauri::command]
@@ -118,12 +82,7 @@ pub async fn batch_toggle_proxies(
     enabled: bool,
     state: State<'_, AppState>,
 ) -> Result<usize, AppError> {
-    let affected = {
-        let db = state.get_conn()?;
-        proxy_repo::batch_toggle(&db, &ids, enabled)?
-    };
-    let _ = apply_and_reload_inner(&state);
-    Ok(affected)
+    apply_proxy_change(&state, |db| proxy_repo::batch_toggle(db, &ids, enabled))
 }
 
 #[tauri::command]
@@ -131,17 +90,40 @@ pub async fn batch_delete_proxies(
     ids: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<usize, AppError> {
-    let affected = {
-        let db = state.get_conn()?;
-        proxy_repo::batch_delete(&db, &ids)?
-    };
-    let _ = apply_and_reload_inner(&state);
-    Ok(affected)
+    apply_proxy_change(&state, |db| proxy_repo::batch_delete(db, &ids))
 }
 
-/// Helper: read all data from DB, generate configs, test, and reload.
-fn apply_and_reload_inner(state: &AppState) -> Result<(), AppError> {
-    let db = state.get_conn()?;
+fn apply_proxy_change<T, F>(state: &AppState, change: F) -> Result<T, AppError>
+where
+    F: FnOnce(&rusqlite::Connection) -> Result<T, AppError>,
+{
+    let mut db = state.get_conn()?;
+    let tx = db.transaction()?;
+    let result = change(&tx)?;
+    let (rules, certs, access_lists) = load_config_data(&tx)?;
+
+    match config_engine::apply_and_reload(&state.data_dir, &rules, &certs, &access_lists) {
+        Ok(_) => {
+            tx.commit()?;
+            Ok(result)
+        }
+        Err(e) => {
+            let _ = tx.rollback();
+            Err(e)
+        }
+    }
+}
+
+fn load_config_data(
+    db: &rusqlite::Connection,
+) -> Result<
+    (
+        Vec<ProxyRule>,
+        Vec<Certificate>,
+        Vec<(AccessList, Vec<AccessRule>)>,
+    ),
+    AppError,
+> {
     let rules = proxy_repo::list_enabled(&db)?;
     let certs = cert_repo::list_all(&db)?;
     let access_lists_raw = access_repo::list_all_lists(&db)?;
@@ -151,8 +133,5 @@ fn apply_and_reload_inner(state: &AppState) -> Result<(), AppError> {
         let al_rules = access_repo::list_rules_by_list(&db, &al.id)?;
         access_lists.push((al.clone(), al_rules));
     }
-    drop(db);
-
-    config_engine::apply_and_reload(&state.data_dir, &rules, &certs, &access_lists)?;
-    Ok(())
+    Ok((rules, certs, access_lists))
 }

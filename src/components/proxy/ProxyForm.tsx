@@ -67,6 +67,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
   const [certificateId, setCertificateId] = useState(rule?.certificate_id ?? '');
   const [accessListId, setAccessListId] = useState(rule?.access_list_id ?? '');
   const [websocket, setWebsocket] = useState(rule?.websocket ?? false);
+  const [keepAlive, setKeepAlive] = useState(rule?.keep_alive ?? false);
   const [portWarning, setPortWarning] = useState('');
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
@@ -219,6 +220,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
           certificate_id: tlsMode === 'terminate' ? certificateId || null : null,
           access_list_id: accessListId || null,
           websocket: showWebsocket ? websocket : false,
+          keep_alive: keepAlive,
           custom_headers,
           upstream_targets,
         };
@@ -239,6 +241,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
           certificate_id: tlsMode === 'terminate' ? certificateId || null : null,
           access_list_id: accessListId || null,
           websocket: showWebsocket ? websocket : false,
+          keep_alive: keepAlive,
           custom_headers,
           upstream_targets,
         };
@@ -627,13 +630,29 @@ export function ProxyForm({ rule }: ProxyFormProps) {
             </Select>
           </div>
           {showWebsocket && (
-            <div className="mb-4 flex items-center gap-2 mt-6">
-              <Toggle checked={websocket} onChange={setWebsocket} />
-              <label className="text-[12px] font-medium text-text-secondary">
-                {t('proxyForm.websocket')}
-              </label>
+            <div className="mb-4 mt-6">
+              <div className="flex items-center gap-2">
+                <Toggle checked={websocket} onChange={setWebsocket} />
+                <label className="text-[12px] font-medium text-text-secondary">
+                  {t('proxyForm.websocket')}
+                </label>
+              </div>
+              <p className="text-[11px] text-text-tertiary mt-1 ml-11">
+                {t('proxyForm.websocketDesc')}
+              </p>
             </div>
           )}
+          <div className="mb-4 mt-6">
+            <div className="flex items-center gap-2">
+              <Toggle checked={keepAlive} onChange={setKeepAlive} />
+              <label className="text-[12px] font-medium text-text-secondary">
+                {t('proxyForm.keepAlive')}
+              </label>
+            </div>
+            <p className="text-[11px] text-text-tertiary mt-1 ml-11">
+              {t('proxyForm.keepAliveDesc')}
+            </p>
+          </div>
         </div>
       </section>
 

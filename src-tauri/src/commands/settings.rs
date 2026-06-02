@@ -51,10 +51,7 @@ pub async fn export_data(state: State<'_, AppState>) -> Result<ExportData, AppEr
 }
 
 #[tauri::command]
-pub async fn import_data(
-    data: ExportData,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
+pub async fn import_data(data: ExportData, state: State<'_, AppState>) -> Result<(), AppError> {
     let db = state.get_conn()?;
 
     // Import in a transaction
@@ -122,8 +119,8 @@ pub async fn import_data(
         // Import proxy rules
         for pr in &data.proxy_rules {
             db.execute(
-                "INSERT INTO proxy_rules (id, name, proxy_type, enabled, listen_port, listen_host, domain, path_prefix, upstream_host, upstream_port, tls_mode, certificate_id, access_list_id, websocket, custom_headers, sort_order, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+                "INSERT INTO proxy_rules (id, name, proxy_type, enabled, listen_port, listen_host, domain, path_prefix, upstream_host, upstream_port, upstream_scheme, tls_mode, certificate_id, access_list_id, websocket, keep_alive, custom_headers, upstream_targets, sort_order, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
                 rusqlite::params![
                     pr.id,
                     pr.name,
@@ -135,11 +132,14 @@ pub async fn import_data(
                     pr.path_prefix,
                     pr.upstream_host,
                     pr.upstream_port as u32,
+                    pr.upstream_scheme,
                     pr.tls_mode,
                     pr.certificate_id,
                     pr.access_list_id,
                     if pr.websocket { 1 } else { 0 },
+                    if pr.keep_alive { 1 } else { 0 },
                     pr.custom_headers,
+                    pr.upstream_targets,
                     pr.sort_order,
                     pr.created_at,
                     pr.updated_at,

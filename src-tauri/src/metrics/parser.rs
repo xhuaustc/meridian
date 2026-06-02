@@ -79,7 +79,10 @@ fn parse_optional_f64(v: &serde_json::Value) -> Option<f64> {
 pub fn parse_http_line(line: &str) -> Option<HttpLogEntry> {
     let raw: RawHttpEntry = serde_json::from_str(line).ok()?;
     let time = parse_time(&raw.time)?;
-    let urt = raw.upstream_response_time.as_ref().and_then(parse_optional_f64);
+    let urt = raw
+        .upstream_response_time
+        .as_ref()
+        .and_then(parse_optional_f64);
     Some(HttpLogEntry {
         time,
         status: raw.status,

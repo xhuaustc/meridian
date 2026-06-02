@@ -1,7 +1,11 @@
 fn main() {
     // Warn if sidecar nginx binary is missing for the current target
     let target = std::env::var("TARGET").unwrap_or_default();
-    let ext = if target.contains("windows") { ".exe" } else { "" };
+    let ext = if target.contains("windows") {
+        ".exe"
+    } else {
+        ""
+    };
     let sidecar = format!("binaries/nginx-{}{}", target, ext);
     if !std::path::Path::new(&sidecar).exists() {
         println!(

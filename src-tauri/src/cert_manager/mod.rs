@@ -28,9 +28,7 @@ pub fn generate_self_signed(
 
     let mut params = CertificateParams::new(vec![domain.to_string()]);
 
-    params
-        .distinguished_name
-        .push(DnType::CommonName, domain);
+    params.distinguished_name.push(DnType::CommonName, domain);
     params
         .distinguished_name
         .push(DnType::OrganizationName, "Meridian Self-Signed");
@@ -137,10 +135,7 @@ pub fn import_certificate(
         fs::set_permissions(&key_file, fs::Permissions::from_mode(0o600))?;
     }
 
-    info!(
-        "Imported certificate for '{}' at {:?}",
-        domain, cert_file
-    );
+    info!("Imported certificate for '{}' at {:?}", domain, cert_file);
 
     Ok(CreateCertificate {
         name: name.to_string(),

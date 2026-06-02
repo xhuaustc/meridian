@@ -48,10 +48,9 @@ impl CloudflareProvider {
                 .await
                 .map_err(|e| AppError::Dns(format!("Cloudflare API request failed: {}", e)))?;
 
-            let body: CfResponse<Vec<CfZone>> = resp
-                .json()
-                .await
-                .map_err(|e| AppError::Dns(format!("Failed to parse Cloudflare response: {}", e)))?;
+            let body: CfResponse<Vec<CfZone>> = resp.json().await.map_err(|e| {
+                AppError::Dns(format!("Failed to parse Cloudflare response: {}", e))
+            })?;
 
             if let Some(zone) = body.result.into_iter().next() {
                 return Ok(zone.id);
@@ -119,7 +118,10 @@ impl DnsProvider for CloudflareProvider {
 
         let resp = self
             .client
-            .delete(format!("{}/zones/{}/dns_records/{}", CF_API, zone_id, rec_id))
+            .delete(format!(
+                "{}/zones/{}/dns_records/{}",
+                CF_API, zone_id, rec_id
+            ))
             .bearer_auth(&self.api_token)
             .send()
             .await

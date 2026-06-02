@@ -96,16 +96,13 @@ pub async fn update_access_list(
     };
 
     // Cascade reload
-    let _ = apply_and_reload_inner(&state);
+    apply_and_reload_inner(&state)?;
 
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn delete_access_list(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
+pub async fn delete_access_list(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
     let db = state.get_conn()?;
 
     // Check for referencing proxy rules (Fix 2)
@@ -131,9 +128,12 @@ pub async fn create_access_rule(
         let db = state.get_conn()?;
 
         // Check for duplicate rule
-        if let Some(_existing) =
-            access_repo::find_duplicate_rule(&db, &input.access_list_id, &input.action, &input.ip_cidr)?
-        {
+        if let Some(_existing) = access_repo::find_duplicate_rule(
+            &db,
+            &input.access_list_id,
+            &input.action,
+            &input.ip_cidr,
+        )? {
             return Err(AppError::Validation(format!(
                 "A rule with action '{}' and IP '{}' already exists in this list",
                 input.action, input.ip_cidr
@@ -144,23 +144,20 @@ pub async fn create_access_rule(
     };
 
     // Cascade reload
-    let _ = apply_and_reload_inner(&state);
+    apply_and_reload_inner(&state)?;
 
     Ok(rule)
 }
 
 #[tauri::command]
-pub async fn delete_access_rule(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
+pub async fn delete_access_rule(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
     {
         let db = state.get_conn()?;
         access_repo::delete_rule(&db, &id)?;
     }
 
     // Cascade reload
-    let _ = apply_and_reload_inner(&state);
+    apply_and_reload_inner(&state)?;
 
     Ok(())
 }
@@ -177,7 +174,7 @@ pub async fn reorder_access_rules(
     }
 
     // Cascade reload
-    let _ = apply_and_reload_inner(&state);
+    apply_and_reload_inner(&state)?;
 
     Ok(())
 }

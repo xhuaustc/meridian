@@ -49,9 +49,7 @@ impl Route53Provider {
                 candidate
             );
 
-            let resp = self
-                .signed_request("GET", &path, "", "route53")
-                .await?;
+            let resp = self.signed_request("GET", &path, "", "route53").await?;
 
             let body = resp
                 .text()
@@ -103,7 +101,12 @@ impl Route53Provider {
 
         let canonical_request = format!(
             "{}\n{}\n{}\n{}\n{}\n{}",
-            method, canonical_uri, canonical_querystring, canonical_headers, signed_headers, payload_hash
+            method,
+            canonical_uri,
+            canonical_querystring,
+            canonical_headers,
+            signed_headers,
+            payload_hash
         );
 
         // Step 2: String to sign

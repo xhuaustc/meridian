@@ -137,12 +137,7 @@ fn clear_directory(dir: &Path) -> Result<(), AppError> {
 /// Returns the backup directory path.
 pub fn backup_configs(data_dir: &Path) -> Result<PathBuf, AppError> {
     let nginx_dir = data_dir.join("nginx");
-    let backup_dir = data_dir.join("nginx_backup");
-
-    // Remove old backup if exists
-    if backup_dir.exists() {
-        fs::remove_dir_all(&backup_dir)?;
-    }
+    let backup_dir = data_dir.join(format!("nginx_backup_{}", uuid::Uuid::new_v4()));
 
     fs::create_dir_all(&backup_dir)?;
 
@@ -189,7 +184,7 @@ pub fn restore_configs(backup_dir: &Path, data_dir: &Path) -> Result<(), AppErro
     }
 
     // Cleanup backup
-    let _ = fs::remove_dir_all(backup_dir);
+    let _ = cleanup_backup_dir(backup_dir);
 
     info!("Restored nginx configs from backup");
     Ok(())
@@ -206,6 +201,29 @@ fn copy_dir_conf_files(src: &Path, dst: &Path) -> Result<(), AppError> {
                 fs::copy(&path, &dest_file)?;
             }
         }
+    }
+    Ok(())
+}
+
+fn cleanup_backup_dir(backup_dir: &Path) -> Result<(), AppError> {
+    let backup_conf_d = backup_dir.join("conf.d");
+    let backup_stream_d = backup_dir.join("stream.d");
+    clear_directory(&backup_conf_d)?;
+    clear_directory(&backup_stream_d)?;
+
+    let backup_nginx_conf = backup_dir.join("nginx.conf");
+    if backup_nginx_conf.exists() && backup_nginx_conf.is_file() {
+        fs::remove_file(backup_nginx_conf)?;
+    }
+
+    if backup_conf_d.exists() {
+        let _ = fs::remove_dir(&backup_conf_d);
+    }
+    if backup_stream_d.exists() {
+        let _ = fs::remove_dir(&backup_stream_d);
+    }
+    if backup_dir.exists() {
+        let _ = fs::remove_dir(backup_dir);
     }
     Ok(())
 }
@@ -231,6 +249,16 @@ pub fn apply_and_reload(
             return Err(e);
         }
     };
+    if !conflicts.is_empty() {
+        let message = conflicts
+            .iter()
+            .map(|c| c.message.as_str())
+            .collect::<Vec<_>>()
+            .join("; ");
+        warn!("Config conflict detected, restoring backup: {}", message);
+        let _ = restore_configs(&backup_dir, data_dir);
+        return Err(AppError::Conflict(message));
+    }
 
     // Step 3: test nginx config
     match crate::nginx_manager::test_config(data_dir) {
@@ -245,7 +273,7 @@ pub fn apply_and_reload(
                 }
             }
             // Cleanup backup on success
-            let _ = fs::remove_dir_all(&backup_dir);
+            let _ = cleanup_backup_dir(&backup_dir);
             Ok(conflicts)
         }
         Ok((false, error_msg)) => {
@@ -260,7 +288,7 @@ pub fn apply_and_reload(
             // nginx binary not found or other issue - still keep new configs
             // but don't fail the operation since configs might still be valid
             warn!("Could not test config (nginx not available): {}", e);
-            let _ = fs::remove_dir_all(&backup_dir);
+            let _ = cleanup_backup_dir(&backup_dir);
             Ok(conflicts)
         }
     }

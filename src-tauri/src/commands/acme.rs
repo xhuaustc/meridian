@@ -8,8 +8,8 @@ use crate::acme_client;
 use crate::dns_provider;
 use crate::error::AppError;
 use crate::nginx_manager;
-use crate::store::{acme_repo, cert_repo, dns_credential_repo};
 use crate::store::models::{Certificate, RenewalStatus};
+use crate::store::{acme_repo, cert_repo, dns_credential_repo};
 use crate::AppState;
 
 #[tauri::command]
@@ -21,7 +21,9 @@ pub async fn request_acme_cert(
     state: State<'_, AppState>,
 ) -> Result<Certificate, AppError> {
     if domains.is_empty() {
-        return Err(AppError::Validation("At least one domain is required".to_string()));
+        return Err(AppError::Validation(
+            "At least one domain is required".to_string(),
+        ));
     }
     if email.trim().is_empty() {
         return Err(AppError::Validation("Email is required".to_string()));
@@ -103,10 +105,8 @@ async fn do_acme_background(
 
     // Get or create ACME account (this is the slow network call)
     let existing_key = {
-        let conn = rusqlite::Connection::open(db_path)
-            .map_err(|e| AppError::Database(e))?;
-        acme_repo::find_by_email(&conn, email)?
-            .map(|a| a.account_key_pem)
+        let conn = rusqlite::Connection::open(db_path).map_err(|e| AppError::Database(e))?;
+        acme_repo::find_by_email(&conn, email)?.map(|a| a.account_key_pem)
     };
 
     let (account, creds_json) =
@@ -114,8 +114,7 @@ async fn do_acme_background(
 
     // Save ACME account if new, and update the cert's acme_account_id
     {
-        let conn = rusqlite::Connection::open(db_path)
-            .map_err(|e| AppError::Database(e))?;
+        let conn = rusqlite::Connection::open(db_path).map_err(|e| AppError::Database(e))?;
         if existing_key.is_none() {
             acme_repo::create(&conn, email, &creds_json, acme_client::LETS_ENCRYPT_URL)?;
         }
@@ -125,14 +124,14 @@ async fn do_acme_background(
         conn.execute(
             "UPDATE certificates SET acme_account_id = ?1 WHERE id = ?2",
             rusqlite::params![acme_account_id, cert_id],
-        ).map_err(|e| AppError::Database(e))?;
+        )
+        .map_err(|e| AppError::Database(e))?;
     }
 
     // Do the actual certificate request
     match acme_client::request_certificate(&account, domains, provider.as_ref(), data_dir).await {
         Ok(result) => {
-            let conn = rusqlite::Connection::open(db_path)
-                .map_err(|e| AppError::Database(e))?;
+            let conn = rusqlite::Connection::open(db_path).map_err(|e| AppError::Database(e))?;
             cert_repo::finish_pending(
                 &conn,
                 cert_id,
@@ -150,8 +149,7 @@ async fn do_acme_background(
         Err(e) => {
             let err_msg = e.to_string();
             error!("ACME certificate {} failed: {}", cert_id, err_msg);
-            let conn = rusqlite::Connection::open(db_path)
-                .map_err(|e| AppError::Database(e))?;
+            let conn = rusqlite::Connection::open(db_path).map_err(|e| AppError::Database(e))?;
             cert_repo::fail_pending(&conn, cert_id, &err_msg)?;
 
             nginx_manager::append_to_error_log(

@@ -156,7 +156,6 @@ CONFIGURE_ARGS=(
     --without-http_upstream_hash_module
     --without-http_upstream_ip_hash_module
     --without-http_upstream_least_conn_module
-    --without-http_upstream_keepalive_module
     --without-http_upstream_zone_module
     --without-stream_geo_module
     --without-stream_split_clients_module

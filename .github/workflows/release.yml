@@ -1,7 +1,21 @@
 name: Release
 
 on:
+  push:
   workflow_dispatch:
+    inputs:
+      target:
+        description: Target platform to build
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - default
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+          - x86_64-unknown-linux-gnu
+          - x86_64-pc-windows-msvc
 
 permissions:
   contents: write
@@ -13,27 +27,47 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.matrix.outputs.include }}
+    steps:
+      - name: Select build targets
+        id: matrix
+        shell: bash
+        run: |
+          default_matrix='[{"os":"macos-latest","rust-target":"aarch64-apple-darwin","tauri-args":"--target aarch64-apple-darwin"},{"os":"windows-latest","rust-target":"x86_64-pc-windows-msvc","tauri-args":""}]'
+          all_matrix='[{"os":"macos-latest","rust-target":"aarch64-apple-darwin","tauri-args":"--target aarch64-apple-darwin"},{"os":"macos-latest","rust-target":"x86_64-apple-darwin","tauri-args":"--target x86_64-apple-darwin"},{"os":"ubuntu-22.04","rust-target":"x86_64-unknown-linux-gnu","tauri-args":""},{"os":"windows-latest","rust-target":"x86_64-pc-windows-msvc","tauri-args":""}]'
+
+          case "${{ github.event_name }}:${{ inputs.target || 'default' }}" in
+            workflow_dispatch:all)
+              matrix="$all_matrix"
+              ;;
+            workflow_dispatch:aarch64-apple-darwin)
+              matrix='[{"os":"macos-latest","rust-target":"aarch64-apple-darwin","tauri-args":"--target aarch64-apple-darwin"}]'
+              ;;
+            workflow_dispatch:x86_64-apple-darwin)
+              matrix='[{"os":"macos-latest","rust-target":"x86_64-apple-darwin","tauri-args":"--target x86_64-apple-darwin"}]'
+              ;;
+            workflow_dispatch:x86_64-unknown-linux-gnu)
+              matrix='[{"os":"ubuntu-22.04","rust-target":"x86_64-unknown-linux-gnu","tauri-args":""}]'
+              ;;
+            workflow_dispatch:x86_64-pc-windows-msvc)
+              matrix='[{"os":"windows-latest","rust-target":"x86_64-pc-windows-msvc","tauri-args":""}]'
+              ;;
+            *)
+              matrix="$default_matrix"
+              ;;
+          esac
+
+          echo "include=$matrix" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: prepare-matrix
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # macOS ARM (Apple Silicon)
-          - os: macos-latest
-            rust-target: aarch64-apple-darwin
-            tauri-args: '--target aarch64-apple-darwin'
-          # macOS x86_64 (Intel)
-          - os: macos-latest
-            rust-target: x86_64-apple-darwin
-            tauri-args: '--target x86_64-apple-darwin'
-          # Linux x86_64
-          - os: ubuntu-22.04
-            rust-target: x86_64-unknown-linux-gnu
-            tauri-args: ''
-          # Windows x86_64
-          - os: windows-latest
-            rust-target: x86_64-pc-windows-msvc
-            tauri-args: ''
+        include: ${{ fromJSON(needs.prepare-matrix.outputs.include) }}
 
     runs-on: ${{ matrix.os }}
     environment: RELEASE

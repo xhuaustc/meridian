@@ -1,5 +1,5 @@
-use thiserror::Error;
 use serde::Serialize;
+use thiserror::Error;
 
 #[derive(Serialize)]
 struct ErrorResponse {
@@ -56,18 +56,31 @@ impl AppError {
             AppError::NotFound(_) => "NOT_FOUND".to_string(),
             AppError::Validation(msg) => {
                 // Generate specific codes from validation messages
-                if msg.contains("Name") { "VALIDATION_NAME".to_string() }
-                else if msg.contains("listen_port") { "VALIDATION_PORT".to_string() }
-                else if msg.contains("upstream_port") { "VALIDATION_UPSTREAM_PORT".to_string() }
-                else if msg.contains("domain") { "VALIDATION_DOMAIN".to_string() }
-                else if msg.contains("proxy_type") { "VALIDATION_PROXY_TYPE".to_string() }
-                else if msg.contains("tls_mode") { "VALIDATION_TLS_MODE".to_string() }
-                else if msg.contains("certificate_id") { "VALIDATION_CERTIFICATE".to_string() }
-                else if msg.contains("websocket") { "VALIDATION_WEBSOCKET".to_string() }
-                else if msg.contains("path_prefix") { "VALIDATION_PATH_PREFIX".to_string() }
-                else if msg.contains("IP") || msg.contains("CIDR") { "VALIDATION_IP".to_string() }
-                else if msg.contains("Hostname") || msg.contains("hostname") { "VALIDATION_HOSTNAME".to_string() }
-                else { "VALIDATION_ERROR".to_string() }
+                if msg.contains("Name") {
+                    "VALIDATION_NAME".to_string()
+                } else if msg.contains("listen_port") {
+                    "VALIDATION_PORT".to_string()
+                } else if msg.contains("upstream_port") {
+                    "VALIDATION_UPSTREAM_PORT".to_string()
+                } else if msg.contains("domain") {
+                    "VALIDATION_DOMAIN".to_string()
+                } else if msg.contains("proxy_type") {
+                    "VALIDATION_PROXY_TYPE".to_string()
+                } else if msg.contains("tls_mode") {
+                    "VALIDATION_TLS_MODE".to_string()
+                } else if msg.contains("certificate_id") {
+                    "VALIDATION_CERTIFICATE".to_string()
+                } else if msg.contains("websocket") {
+                    "VALIDATION_WEBSOCKET".to_string()
+                } else if msg.contains("path_prefix") {
+                    "VALIDATION_PATH_PREFIX".to_string()
+                } else if msg.contains("IP") || msg.contains("CIDR") {
+                    "VALIDATION_IP".to_string()
+                } else if msg.contains("Hostname") || msg.contains("hostname") {
+                    "VALIDATION_HOSTNAME".to_string()
+                } else {
+                    "VALIDATION_ERROR".to_string()
+                }
             }
             AppError::Dns(_) => "DNS_ERROR".to_string(),
             AppError::Acme(_) => "ACME_ERROR".to_string(),

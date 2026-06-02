@@ -4,8 +4,8 @@ use tauri::State;
 
 use crate::dns_provider;
 use crate::error::AppError;
-use crate::store::{cert_repo, dns_credential_repo};
 use crate::store::models::{CreateDnsCredential, DnsCredential};
+use crate::store::{cert_repo, dns_credential_repo};
 use crate::AppState;
 
 /// DnsCredential with masked credentials for list responses.
@@ -91,10 +91,7 @@ pub async fn update_dns_credential(
 }
 
 #[tauri::command]
-pub async fn delete_dns_credential(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
+pub async fn delete_dns_credential(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
     let db = state.get_conn()?;
 
     // Check if any ACME certificates reference this credential

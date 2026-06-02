@@ -87,10 +87,7 @@ pub fn update(
 pub fn delete(conn: &Connection, id: &str) -> Result<(), AppError> {
     let affected = conn.execute("DELETE FROM host_entries WHERE id = ?1", params![id])?;
     if affected == 0 {
-        return Err(AppError::NotFound(format!(
-            "Host entry '{}' not found",
-            id
-        )));
+        return Err(AppError::NotFound(format!("Host entry '{}' not found", id)));
     }
     Ok(())
 }
@@ -102,10 +99,7 @@ pub fn toggle(conn: &Connection, id: &str, enabled: bool) -> Result<HostEntry, A
         params![enabled, now, id],
     )?;
     if affected == 0 {
-        return Err(AppError::NotFound(format!(
-            "Host entry '{}' not found",
-            id
-        )));
+        return Err(AppError::NotFound(format!("Host entry '{}' not found", id)));
     }
     get_by_id(conn, id)
 }

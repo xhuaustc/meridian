@@ -22,7 +22,11 @@ pub async fn read_access_log(
     state: State<'_, AppState>,
 ) -> Result<LogChunk, AppError> {
     let log_path = match rule_id {
-        Some(id) if !id.is_empty() => state.data_dir.join("nginx").join("logs").join(format!("rule_{}.access.log", id)),
+        Some(id) if !id.is_empty() => state
+            .data_dir
+            .join("nginx")
+            .join("logs")
+            .join(format!("rule_{}.access.log", id)),
         _ => state.data_dir.join("nginx").join("logs").join("access.log"),
     };
     read_log_file(&log_path, tail_lines.unwrap_or(100))
@@ -99,7 +103,11 @@ pub fn cleanup_old_logs(logs_dir: &Path, retention_days: u64) {
         if !path.is_file() {
             continue;
         }
-        let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         if !name.ends_with(".log") {
             continue;
         }
@@ -126,7 +134,10 @@ pub fn cleanup_old_logs(logs_dir: &Path, retention_days: u64) {
     }
 
     if cleaned > 0 {
-        info!("Log cleanup: processed {} log files (retention: {} days)", cleaned, retention_days);
+        info!(
+            "Log cleanup: processed {} log files (retention: {} days)",
+            cleaned, retention_days
+        );
     }
 }
 
@@ -154,7 +165,10 @@ fn trim_old_json_lines(path: &Path, retention_days: u64) -> Result<(), AppError>
         kept.push(line);
     }
 
-    fs::write(path, kept.join("\n") + if kept.is_empty() { "" } else { "\n" })?;
+    fs::write(
+        path,
+        kept.join("\n") + if kept.is_empty() { "" } else { "\n" },
+    )?;
     Ok(())
 }
 
@@ -178,13 +192,22 @@ pub fn spawn_log_cleanup_task(pool: DbPool, data_dir: std::path::PathBuf) {
             // Sleep 6 hours
             std::thread::sleep(std::time::Duration::from_secs(6 * 60 * 60));
 
-            let retention_days = pool.get().ok()
-                .and_then(|db| crate::store::settings_repo::get(&db, "log_retention_days").ok().flatten())
+            let retention_days = pool
+                .get()
+                .ok()
+                .and_then(|db| {
+                    crate::store::settings_repo::get(&db, "log_retention_days")
+                        .ok()
+                        .flatten()
+                })
                 .and_then(|v| v.parse::<u64>().ok())
                 .unwrap_or(7);
 
             let logs_dir = data_dir.join("nginx/logs");
-            info!("Running scheduled log cleanup (retention: {} days)", retention_days);
+            info!(
+                "Running scheduled log cleanup (retention: {} days)",
+                retention_days
+            );
             cleanup_old_logs(&logs_dir, retention_days);
         }
     });

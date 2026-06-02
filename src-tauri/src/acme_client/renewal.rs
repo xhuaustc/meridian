@@ -72,7 +72,10 @@ pub async fn auto_renew_check(pool: &DbPool, data_dir: &Path) {
         let dns_credential_id = match &cert.dns_credential_id {
             Some(id) => id.clone(),
             None => {
-                warn!("Certificate '{}' has no DNS credential, skipping", cert.name);
+                warn!(
+                    "Certificate '{}' has no DNS credential, skipping",
+                    cert.name
+                );
                 continue;
             }
         };
@@ -93,26 +96,29 @@ pub async fn auto_renew_check(pool: &DbPool, data_dir: &Path) {
             Ok(data) => data,
             Err(e) => {
                 let err_msg = e.to_string();
-                error!("Failed to load renewal data for '{}': {}", cert.name, err_msg);
+                error!(
+                    "Failed to load renewal data for '{}': {}",
+                    cert.name, err_msg
+                );
                 let _ = cert_repo::update_cert_after_renewal(
-                    &conn, &cert.id, &cert.expires_at, Some(&err_msg),
+                    &conn,
+                    &cert.id,
+                    &cert.expires_at,
+                    Some(&err_msg),
                 );
                 continue;
             }
         };
 
-        let result = renew_single_cert(
-            data_dir,
-            &domains,
-            &dns_cred,
-            &acme_account,
-        )
-        .await;
+        let result = renew_single_cert(data_dir, &domains, &dns_cred, &acme_account).await;
 
         match result {
             Ok(new_expires) => {
                 let _ = cert_repo::update_cert_after_renewal(&conn, &cert.id, &new_expires, None);
-                info!("Certificate '{}' renewed, new expiry: {}", cert.name, new_expires);
+                info!(
+                    "Certificate '{}' renewed, new expiry: {}",
+                    cert.name, new_expires
+                );
 
                 if nginx_manager::status(data_dir).status == "running" {
                     let _ = nginx_manager::reload(data_dir);
@@ -176,15 +182,13 @@ async fn renew_single_cert(
     dns_cred: &DnsCredential,
     acme_account: &AcmeAccount,
 ) -> Result<String, crate::error::AppError> {
-    let provider =
-        dns_provider::create_provider(&dns_cred.provider, &dns_cred.credentials_json)?;
+    let provider = dns_provider::create_provider(&dns_cred.provider, &dns_cred.credentials_json)?;
 
     let (account, _) =
         super::get_or_create_account(Some(&acme_account.account_key_pem), &acme_account.email)
             .await?;
 
-    let result =
-        super::request_certificate(&account, domains, provider.as_ref(), data_dir).await?;
+    let result = super::request_certificate(&account, domains, provider.as_ref(), data_dir).await?;
 
     Ok(result.expires_at)
 }

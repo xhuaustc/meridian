@@ -16,8 +16,7 @@ fn row_to_cred(row: &rusqlite::Row) -> rusqlite::Result<DnsCredential> {
 }
 
 pub fn list_all(conn: &Connection) -> Result<Vec<DnsCredential>, AppError> {
-    let mut stmt =
-        conn.prepare("SELECT * FROM dns_credentials ORDER BY created_at DESC")?;
+    let mut stmt = conn.prepare("SELECT * FROM dns_credentials ORDER BY created_at DESC")?;
     let creds = stmt
         .query_map([], |row| row_to_cred(row))?
         .collect::<Result<Vec<_>, _>>()?;
@@ -39,7 +38,14 @@ pub fn create(conn: &Connection, input: &CreateDnsCredential) -> Result<DnsCrede
     conn.execute(
         "INSERT INTO dns_credentials (id, name, provider, credentials_json, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![id, input.name, input.provider, input.credentials_json, now, now],
+        params![
+            id,
+            input.name,
+            input.provider,
+            input.credentials_json,
+            now,
+            now
+        ],
     )?;
 
     get_by_id(conn, &id)

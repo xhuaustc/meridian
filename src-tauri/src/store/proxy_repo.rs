@@ -22,6 +22,7 @@ fn row_to_proxy(row: &rusqlite::Row) -> rusqlite::Result<ProxyRule> {
         certificate_id: row.get("certificate_id")?,
         access_list_id: row.get("access_list_id")?,
         websocket: row.get::<_, i32>("websocket")? != 0,
+        keep_alive: row.get::<_, i32>("keep_alive")? != 0,
         custom_headers: row.get("custom_headers")?,
         upstream_targets: row.get("upstream_targets")?,
         sort_order: row.get("sort_order")?,
@@ -31,17 +32,18 @@ fn row_to_proxy(row: &rusqlite::Row) -> rusqlite::Result<ProxyRule> {
 }
 
 pub fn list_all(conn: &Connection) -> Result<Vec<ProxyRule>, AppError> {
-    let mut stmt = conn.prepare(
-        "SELECT * FROM proxy_rules ORDER BY sort_order ASC, created_at ASC",
-    )?;
-    let rules = stmt.query_map([], |row| row_to_proxy(row))?
+    let mut stmt =
+        conn.prepare("SELECT * FROM proxy_rules ORDER BY sort_order ASC, created_at ASC")?;
+    let rules = stmt
+        .query_map([], |row| row_to_proxy(row))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rules)
 }
 
 pub fn get_by_id(conn: &Connection, id: &str) -> Result<ProxyRule, AppError> {
     let mut stmt = conn.prepare("SELECT * FROM proxy_rules WHERE id = ?1")?;
-    let rule = stmt.query_row(params![id], |row| row_to_proxy(row))
+    let rule = stmt
+        .query_row(params![id], |row| row_to_proxy(row))
         .map_err(|_| AppError::NotFound(format!("Proxy rule '{}' not found", id)))?;
     Ok(rule)
 }
@@ -49,15 +51,30 @@ pub fn get_by_id(conn: &Connection, id: &str) -> Result<ProxyRule, AppError> {
 pub fn create(conn: &Connection, input: &CreateProxyRule) -> Result<ProxyRule, AppError> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
-    let listen_host = input.listen_host.clone().unwrap_or_else(|| "0.0.0.0".to_string());
-    let upstream_scheme = input.upstream_scheme.clone().unwrap_or_else(|| "http".to_string());
+    let listen_host = input
+        .listen_host
+        .clone()
+        .unwrap_or_else(|| "0.0.0.0".to_string());
+    let upstream_scheme = input
+        .upstream_scheme
+        .clone()
+        .unwrap_or_else(|| "http".to_string());
     let tls_mode = input.tls_mode.clone().unwrap_or_else(|| "none".to_string());
-    let websocket = if input.websocket.unwrap_or(false) { 1 } else { 0 };
+    let websocket = if input.websocket.unwrap_or(false) {
+        1
+    } else {
+        0
+    };
+    let keep_alive = if input.keep_alive.unwrap_or(false) {
+        1
+    } else {
+        0
+    };
     let sort_order = input.sort_order.unwrap_or(0);
 
     conn.execute(
-        "INSERT INTO proxy_rules (id, name, proxy_type, enabled, listen_port, listen_host, domain, path_prefix, upstream_host, upstream_port, upstream_scheme, tls_mode, certificate_id, access_list_id, websocket, custom_headers, upstream_targets, sort_order, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+        "INSERT INTO proxy_rules (id, name, proxy_type, enabled, listen_port, listen_host, domain, path_prefix, upstream_host, upstream_port, upstream_scheme, tls_mode, certificate_id, access_list_id, websocket, keep_alive, custom_headers, upstream_targets, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
         params![
             id,
             input.name,
@@ -73,6 +90,7 @@ pub fn create(conn: &Connection, input: &CreateProxyRule) -> Result<ProxyRule, A
             input.certificate_id,
             input.access_list_id,
             websocket,
+            keep_alive,
             input.custom_headers,
             input.upstream_targets,
             sort_order,
@@ -97,12 +115,22 @@ pub fn update(conn: &Connection, id: &str, input: &UpdateProxyRule) -> Result<Pr
     let proxy_type = input.proxy_type.as_deref().unwrap_or(&existing.proxy_type);
     let enabled = input.enabled.unwrap_or(existing.enabled);
     let listen_port = input.listen_port.unwrap_or(existing.listen_port);
-    let listen_host = input.listen_host.as_deref().unwrap_or(&existing.listen_host);
-    let upstream_host = input.upstream_host.as_deref().unwrap_or(&existing.upstream_host);
+    let listen_host = input
+        .listen_host
+        .as_deref()
+        .unwrap_or(&existing.listen_host);
+    let upstream_host = input
+        .upstream_host
+        .as_deref()
+        .unwrap_or(&existing.upstream_host);
     let upstream_port = input.upstream_port.unwrap_or(existing.upstream_port);
-    let upstream_scheme = input.upstream_scheme.as_deref().unwrap_or(&existing.upstream_scheme);
+    let upstream_scheme = input
+        .upstream_scheme
+        .as_deref()
+        .unwrap_or(&existing.upstream_scheme);
     let tls_mode = input.tls_mode.as_deref().unwrap_or(&existing.tls_mode);
     let websocket = input.websocket.unwrap_or(existing.websocket);
+    let keep_alive = input.keep_alive.unwrap_or(existing.keep_alive);
     let sort_order = input.sort_order.unwrap_or(existing.sort_order);
 
     // Optional fields: always use value from input (allows clearing by sending null)
@@ -114,7 +142,7 @@ pub fn update(conn: &Connection, id: &str, input: &UpdateProxyRule) -> Result<Pr
     let upstream_targets: &Option<String> = &input.upstream_targets;
 
     conn.execute(
-        "UPDATE proxy_rules SET name=?1, proxy_type=?2, enabled=?3, listen_port=?4, listen_host=?5, domain=?6, path_prefix=?7, upstream_host=?8, upstream_port=?9, upstream_scheme=?10, tls_mode=?11, certificate_id=?12, access_list_id=?13, websocket=?14, custom_headers=?15, upstream_targets=?16, sort_order=?17, updated_at=?18 WHERE id=?19",
+        "UPDATE proxy_rules SET name=?1, proxy_type=?2, enabled=?3, listen_port=?4, listen_host=?5, domain=?6, path_prefix=?7, upstream_host=?8, upstream_port=?9, upstream_scheme=?10, tls_mode=?11, certificate_id=?12, access_list_id=?13, websocket=?14, keep_alive=?15, custom_headers=?16, upstream_targets=?17, sort_order=?18, updated_at=?19 WHERE id=?20",
         params![
             name,
             proxy_type,
@@ -130,6 +158,7 @@ pub fn update(conn: &Connection, id: &str, input: &UpdateProxyRule) -> Result<Pr
             certificate_id,
             access_list_id,
             if websocket { 1 } else { 0 },
+            if keep_alive { 1 } else { 0 },
             custom_headers,
             upstream_targets,
             sort_order,
@@ -165,7 +194,8 @@ pub fn list_enabled(conn: &Connection) -> Result<Vec<ProxyRule>, AppError> {
     let mut stmt = conn.prepare(
         "SELECT * FROM proxy_rules WHERE enabled = 1 ORDER BY sort_order ASC, created_at ASC",
     )?;
-    let rules = stmt.query_map([], |row| row_to_proxy(row))?
+    let rules = stmt
+        .query_map([], |row| row_to_proxy(row))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rules)
 }
@@ -204,7 +234,8 @@ pub fn batch_toggle(conn: &Connection, ids: &[String], enabled: bool) -> Result<
     }
     param_values.push(Box::new(if enabled { 1i32 } else { 0i32 }));
     param_values.push(Box::new(now));
-    let params_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+    let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+        param_values.iter().map(|p| p.as_ref()).collect();
     let affected = conn.execute(&sql, params_refs.as_slice())?;
     Ok(affected)
 }
@@ -219,29 +250,36 @@ pub fn batch_delete(conn: &Connection, ids: &[String]) -> Result<usize, AppError
         "DELETE FROM proxy_rules WHERE id IN ({})",
         placeholders.join(",")
     );
-    let param_values: Vec<Box<dyn rusqlite::types::ToSql>> =
-        ids.iter().map(|id| Box::new(id.clone()) as Box<dyn rusqlite::types::ToSql>).collect();
-    let params_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+    let param_values: Vec<Box<dyn rusqlite::types::ToSql>> = ids
+        .iter()
+        .map(|id| Box::new(id.clone()) as Box<dyn rusqlite::types::ToSql>)
+        .collect();
+    let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+        param_values.iter().map(|p| p.as_ref()).collect();
     let affected = conn.execute(&sql, params_refs.as_slice())?;
     Ok(affected)
 }
 
 /// Find proxy rules that reference a given certificate_id.
-pub fn find_by_certificate(conn: &Connection, certificate_id: &str) -> Result<Vec<ProxyRule>, AppError> {
-    let mut stmt = conn.prepare(
-        "SELECT * FROM proxy_rules WHERE certificate_id = ?1",
-    )?;
-    let rules = stmt.query_map(params![certificate_id], |row| row_to_proxy(row))?
+pub fn find_by_certificate(
+    conn: &Connection,
+    certificate_id: &str,
+) -> Result<Vec<ProxyRule>, AppError> {
+    let mut stmt = conn.prepare("SELECT * FROM proxy_rules WHERE certificate_id = ?1")?;
+    let rules = stmt
+        .query_map(params![certificate_id], |row| row_to_proxy(row))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rules)
 }
 
 /// Find proxy rules that reference a given access_list_id.
-pub fn find_by_access_list(conn: &Connection, access_list_id: &str) -> Result<Vec<ProxyRule>, AppError> {
-    let mut stmt = conn.prepare(
-        "SELECT * FROM proxy_rules WHERE access_list_id = ?1",
-    )?;
-    let rules = stmt.query_map(params![access_list_id], |row| row_to_proxy(row))?
+pub fn find_by_access_list(
+    conn: &Connection,
+    access_list_id: &str,
+) -> Result<Vec<ProxyRule>, AppError> {
+    let mut stmt = conn.prepare("SELECT * FROM proxy_rules WHERE access_list_id = ?1")?;
+    let rules = stmt
+        .query_map(params![access_list_id], |row| row_to_proxy(row))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rules)
 }
@@ -267,13 +305,18 @@ pub fn list_filtered(
     if let Some(s) = search {
         let pattern = format!("%{}%", s);
         param_values.push(Box::new(pattern));
-        sql.push_str(&format!(" AND (name LIKE ?{0} OR domain LIKE ?{0})", param_values.len()));
+        sql.push_str(&format!(
+            " AND (name LIKE ?{0} OR domain LIKE ?{0})",
+            param_values.len()
+        ));
     }
     sql.push_str(" ORDER BY sort_order ASC, created_at ASC");
 
     let mut stmt = conn.prepare(&sql)?;
-    let params_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
-    let rules = stmt.query_map(params_refs.as_slice(), |row| row_to_proxy(row))?
+    let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+        param_values.iter().map(|p| p.as_ref()).collect();
+    let rules = stmt
+        .query_map(params_refs.as_slice(), |row| row_to_proxy(row))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rules)
 }

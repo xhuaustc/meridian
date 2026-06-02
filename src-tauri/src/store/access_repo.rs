@@ -93,9 +93,8 @@ pub fn delete_list(conn: &Connection, id: &str) -> Result<(), AppError> {
 // --- Access Rule CRUD ---
 
 pub fn list_rules_by_list(conn: &Connection, list_id: &str) -> Result<Vec<AccessRule>, AppError> {
-    let mut stmt = conn.prepare(
-        "SELECT * FROM access_rules WHERE access_list_id = ?1 ORDER BY sort_order ASC",
-    )?;
+    let mut stmt = conn
+        .prepare("SELECT * FROM access_rules WHERE access_list_id = ?1 ORDER BY sort_order ASC")?;
     let rules = stmt
         .query_map(params![list_id], |row| row_to_access_rule(row))?
         .collect::<Result<Vec<_>, _>>()?;
@@ -113,7 +112,14 @@ pub fn create_rule(conn: &Connection, input: &CreateAccessRule) -> Result<Access
     conn.execute(
         "INSERT INTO access_rules (id, access_list_id, action, ip_cidr, sort_order, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![id, input.access_list_id, input.action, input.ip_cidr, sort_order, now],
+        params![
+            id,
+            input.access_list_id,
+            input.action,
+            input.ip_cidr,
+            sort_order,
+            now
+        ],
     )?;
 
     get_rule_by_id(conn, &id)
@@ -149,8 +155,7 @@ pub fn list_all_rules(conn: &Connection) -> Result<Vec<AccessRule>, AppError> {
 
 /// Check if an access list with the given name already exists (case-insensitive).
 pub fn find_by_name_ci(conn: &Connection, name: &str) -> Result<Option<AccessList>, AppError> {
-    let mut stmt =
-        conn.prepare("SELECT * FROM access_lists WHERE LOWER(name) = LOWER(?1)")?;
+    let mut stmt = conn.prepare("SELECT * FROM access_lists WHERE LOWER(name) = LOWER(?1)")?;
     let result = stmt
         .query_row(params![name], |row| row_to_access_list(row))
         .ok();

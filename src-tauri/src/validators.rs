@@ -255,7 +255,9 @@ fn validate_ip_address(ip: &str, original: &str) -> Result<(), AppError> {
 pub fn validate_host_ip(ip: &str) -> Result<(), AppError> {
     let ip = ip.trim();
     if ip.is_empty() {
-        return Err(AppError::Validation("IP address must not be empty".to_string()));
+        return Err(AppError::Validation(
+            "IP address must not be empty".to_string(),
+        ));
     }
     if ip.parse::<std::net::Ipv4Addr>().is_err() && ip.parse::<std::net::Ipv6Addr>().is_err() {
         return Err(AppError::Validation(format!("Invalid IP address '{}'", ip)));
@@ -266,10 +268,14 @@ pub fn validate_host_ip(ip: &str) -> Result<(), AppError> {
 pub fn validate_hostname(hostname: &str) -> Result<(), AppError> {
     let hostname = hostname.trim();
     if hostname.is_empty() {
-        return Err(AppError::Validation("Hostname must not be empty".to_string()));
+        return Err(AppError::Validation(
+            "Hostname must not be empty".to_string(),
+        ));
     }
     if hostname.len() > 253 {
-        return Err(AppError::Validation("Hostname must not exceed 253 characters".to_string()));
+        return Err(AppError::Validation(
+            "Hostname must not exceed 253 characters".to_string(),
+        ));
     }
     let valid = hostname.split('.').all(|label| {
         !label.is_empty()
@@ -279,7 +285,10 @@ pub fn validate_hostname(hostname: &str) -> Result<(), AppError> {
             && !label.ends_with('-')
     });
     if !valid {
-        return Err(AppError::Validation(format!("Invalid hostname format '{}'", hostname)));
+        return Err(AppError::Validation(format!(
+            "Invalid hostname format '{}'",
+            hostname
+        )));
     }
     Ok(())
 }
@@ -351,7 +360,10 @@ pub fn validate_update_proxy_merged(
     }
 
     // path_prefix must start with /
-    let path_prefix = input.path_prefix.as_deref().or(existing.path_prefix.as_deref());
+    let path_prefix = input
+        .path_prefix
+        .as_deref()
+        .or(existing.path_prefix.as_deref());
     if let Some(pp) = path_prefix {
         if !pp.is_empty() && !pp.starts_with('/') {
             return Err(AppError::Validation(
@@ -427,6 +439,7 @@ mod tests {
             certificate_id: None,
             access_list_id: None,
             websocket: None,
+            keep_alive: None,
             custom_headers: None,
             upstream_targets: None,
             sort_order: None,
@@ -522,46 +535,74 @@ mod tests {
 
     // IP/CIDR validation tests
     #[test]
-    fn test_valid_ipv4() { assert!(validate_ip_cidr("192.168.1.1").is_ok()); }
+    fn test_valid_ipv4() {
+        assert!(validate_ip_cidr("192.168.1.1").is_ok());
+    }
 
     #[test]
-    fn test_valid_ipv4_cidr() { assert!(validate_ip_cidr("10.0.0.0/8").is_ok()); }
+    fn test_valid_ipv4_cidr() {
+        assert!(validate_ip_cidr("10.0.0.0/8").is_ok());
+    }
 
     #[test]
-    fn test_valid_ipv6() { assert!(validate_ip_cidr("::1").is_ok()); }
+    fn test_valid_ipv6() {
+        assert!(validate_ip_cidr("::1").is_ok());
+    }
 
     #[test]
-    fn test_valid_ipv6_cidr() { assert!(validate_ip_cidr("fe80::/10").is_ok()); }
+    fn test_valid_ipv6_cidr() {
+        assert!(validate_ip_cidr("fe80::/10").is_ok());
+    }
 
     #[test]
-    fn test_all_keyword() { assert!(validate_ip_cidr("all").is_ok()); }
+    fn test_all_keyword() {
+        assert!(validate_ip_cidr("all").is_ok());
+    }
 
     #[test]
-    fn test_invalid_ip() { assert!(validate_ip_cidr("not-an-ip").is_err()); }
+    fn test_invalid_ip() {
+        assert!(validate_ip_cidr("not-an-ip").is_err());
+    }
 
     #[test]
-    fn test_ipv4_cidr_too_large() { assert!(validate_ip_cidr("10.0.0.0/33").is_err()); }
+    fn test_ipv4_cidr_too_large() {
+        assert!(validate_ip_cidr("10.0.0.0/33").is_err());
+    }
 
     #[test]
-    fn test_ipv6_cidr_too_large() { assert!(validate_ip_cidr("::1/129").is_err()); }
+    fn test_ipv6_cidr_too_large() {
+        assert!(validate_ip_cidr("::1/129").is_err());
+    }
 
     // Hostname validation
     #[test]
-    fn test_valid_hostname() { assert!(validate_hostname("example.com").is_ok()); }
+    fn test_valid_hostname() {
+        assert!(validate_hostname("example.com").is_ok());
+    }
 
     #[test]
-    fn test_hostname_too_long() { assert!(validate_hostname(&"a".repeat(254)).is_err()); }
+    fn test_hostname_too_long() {
+        assert!(validate_hostname(&"a".repeat(254)).is_err());
+    }
 
     #[test]
-    fn test_hostname_invalid_chars() { assert!(validate_hostname("exam ple.com").is_err()); }
+    fn test_hostname_invalid_chars() {
+        assert!(validate_hostname("exam ple.com").is_err());
+    }
 
     #[test]
-    fn test_hostname_leading_dash() { assert!(validate_hostname("-example.com").is_err()); }
+    fn test_hostname_leading_dash() {
+        assert!(validate_hostname("-example.com").is_err());
+    }
 
     // Host entry validation
     #[test]
-    fn test_valid_host_entry() { assert!(validate_host_entry("127.0.0.1", "localhost").is_ok()); }
+    fn test_valid_host_entry() {
+        assert!(validate_host_entry("127.0.0.1", "localhost").is_ok());
+    }
 
     #[test]
-    fn test_invalid_host_ip() { assert!(validate_host_entry("not-ip", "localhost").is_err()); }
+    fn test_invalid_host_ip() {
+        assert!(validate_host_entry("not-ip", "localhost").is_err());
+    }
 }

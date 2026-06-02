@@ -21,6 +21,7 @@ export interface ProxyRule {
   certificate_id: string | null;
   access_list_id: string | null;
   websocket: boolean;
+  keep_alive: boolean;
   custom_headers: string | null;
   upstream_targets: string | null;
   sort_order: number;
@@ -48,6 +49,7 @@ export interface CreateProxyRule {
   certificate_id?: string | null;
   access_list_id?: string | null;
   websocket?: boolean;
+  keep_alive?: boolean;
   custom_headers?: string | null;
   upstream_targets?: string | null;
   sort_order?: number;
@@ -68,6 +70,7 @@ export interface UpdateProxyRule {
   certificate_id?: string | null;
   access_list_id?: string | null;
   websocket?: boolean;
+  keep_alive?: boolean;
   custom_headers?: string | null;
   upstream_targets?: string | null;
   sort_order?: number;

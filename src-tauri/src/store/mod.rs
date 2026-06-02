@@ -31,19 +31,20 @@ pub fn init_pool(db_path: &Path) -> Result<DbPool, AppError> {
         run_migrations(&conn)?;
     }
 
-    let manager = r2d2_sqlite::SqliteConnectionManager::file(db_path)
-        .with_init(|conn| {
-            conn.execute_batch("PRAGMA foreign_keys=ON;")?;
-            Ok(())
-        });
+    let manager = r2d2_sqlite::SqliteConnectionManager::file(db_path).with_init(|conn| {
+        conn.execute_batch("PRAGMA foreign_keys=ON;")?;
+        Ok(())
+    });
 
     let pool = r2d2::Pool::builder()
         .max_size(8)
         .build(manager)
-        .map_err(|e| AppError::Database(rusqlite::Error::SqliteFailure(
-            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_ERROR),
-            Some(format!("Failed to create connection pool: {}", e)),
-        )))?;
+        .map_err(|e| {
+            AppError::Database(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_ERROR),
+                Some(format!("Failed to create connection pool: {}", e)),
+            ))
+        })?;
 
     info!("Database pool initialized at {:?}", db_path);
     Ok(pool)
@@ -83,6 +84,7 @@ fn run_migrations(conn: &Connection) -> Result<(), AppError> {
             certificate_id TEXT REFERENCES certificates(id),
             access_list_id TEXT REFERENCES access_lists(id),
             websocket INTEGER DEFAULT 0,
+            keep_alive INTEGER NOT NULL DEFAULT 0,
             custom_headers TEXT,
             sort_order INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
@@ -187,9 +189,7 @@ fn run_migrations(conn: &Connection) -> Result<(), AppError> {
         .collect();
 
     if !proxy_cols.iter().any(|c| c == "upstream_targets") {
-        conn.execute_batch(
-            "ALTER TABLE proxy_rules ADD COLUMN upstream_targets TEXT;",
-        )?;
+        conn.execute_batch("ALTER TABLE proxy_rules ADD COLUMN upstream_targets TEXT;")?;
         info!("Migrated proxy_rules table with upstream_targets column");
     }
 
@@ -198,6 +198,13 @@ fn run_migrations(conn: &Connection) -> Result<(), AppError> {
             "ALTER TABLE proxy_rules ADD COLUMN upstream_scheme TEXT NOT NULL DEFAULT 'http';",
         )?;
         info!("Migrated proxy_rules table with upstream_scheme column");
+    }
+
+    if !proxy_cols.iter().any(|c| c == "keep_alive") {
+        conn.execute_batch(
+            "ALTER TABLE proxy_rules ADD COLUMN keep_alive INTEGER NOT NULL DEFAULT 0;",
+        )?;
+        info!("Migrated proxy_rules table with keep_alive column");
     }
 
     info!("Database migrations complete");

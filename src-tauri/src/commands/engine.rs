@@ -42,9 +42,7 @@ pub async fn restart_engine(state: State<'_, AppState>) -> Result<(), AppError> 
 }
 
 #[tauri::command]
-pub async fn apply_config(
-    state: State<'_, AppState>,
-) -> Result<Vec<PortConflict>, AppError> {
+pub async fn apply_config(state: State<'_, AppState>) -> Result<Vec<PortConflict>, AppError> {
     apply_config_inner(&state)
 }
 
@@ -54,9 +52,7 @@ pub async fn test_nginx_config(state: State<'_, AppState>) -> Result<(bool, Stri
 }
 
 #[tauri::command]
-pub async fn detect_conflicts(
-    state: State<'_, AppState>,
-) -> Result<Vec<PortConflict>, AppError> {
+pub async fn detect_conflicts(state: State<'_, AppState>) -> Result<Vec<PortConflict>, AppError> {
     let db = state.get_conn()?;
     let rules = proxy_repo::list_enabled(&db)?;
     Ok(config_engine::conflict::detect_conflicts(&rules))
@@ -97,6 +93,7 @@ pub async fn check_port_conflict(
         certificate_id: None,
         access_list_id: None,
         websocket: false,
+        keep_alive: false,
         custom_headers: None,
         upstream_targets: None,
         sort_order: 0,
@@ -122,8 +119,8 @@ fn apply_config_inner(state: &AppState) -> Result<Vec<PortConflict>, AppError> {
     let rules = proxy_repo::list_enabled(&db)?;
     let certs = cert_repo::list_all(&db)?;
     let access_lists_raw = access_repo::list_all_lists(&db)?;
-    let worker_processes = settings_repo::get(&db, "worker_processes")?
-        .unwrap_or_else(|| "2".to_string());
+    let worker_processes =
+        settings_repo::get(&db, "worker_processes")?.unwrap_or_else(|| "2".to_string());
 
     let mut access_lists = Vec::new();
     for al in &access_lists_raw {

@@ -25,14 +25,16 @@ fn row_to_cert(row: &rusqlite::Row) -> rusqlite::Result<Certificate> {
 
 pub fn list_all(conn: &Connection) -> Result<Vec<Certificate>, AppError> {
     let mut stmt = conn.prepare("SELECT * FROM certificates ORDER BY created_at DESC")?;
-    let certs = stmt.query_map([], |row| row_to_cert(row))?
+    let certs = stmt
+        .query_map([], |row| row_to_cert(row))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(certs)
 }
 
 pub fn get_by_id(conn: &Connection, id: &str) -> Result<Certificate, AppError> {
     let mut stmt = conn.prepare("SELECT * FROM certificates WHERE id = ?1")?;
-    let cert = stmt.query_row(params![id], |row| row_to_cert(row))
+    let cert = stmt
+        .query_row(params![id], |row| row_to_cert(row))
         .map_err(|_| AppError::NotFound(format!("Certificate '{}' not found", id)))?;
     Ok(cert)
 }
@@ -40,7 +42,11 @@ pub fn get_by_id(conn: &Connection, id: &str) -> Result<Certificate, AppError> {
 pub fn create(conn: &Connection, input: &CreateCertificate) -> Result<Certificate, AppError> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
-    let auto_renew = if input.auto_renew.unwrap_or(false) { 1 } else { 0 };
+    let auto_renew = if input.auto_renew.unwrap_or(false) {
+        1
+    } else {
+        0
+    };
 
     conn.execute(
         "INSERT INTO certificates (id, name, domain, cert_path, key_path, source, expires_at, auto_renew, created_at, dns_credential_id, acme_account_id, acme_domains)
@@ -67,7 +73,10 @@ pub fn create(conn: &Connection, input: &CreateCertificate) -> Result<Certificat
 pub fn delete(conn: &Connection, id: &str) -> Result<(), AppError> {
     let affected = conn.execute("DELETE FROM certificates WHERE id = ?1", params![id])?;
     if affected == 0 {
-        return Err(AppError::NotFound(format!("Certificate '{}' not found", id)));
+        return Err(AppError::NotFound(format!(
+            "Certificate '{}' not found",
+            id
+        )));
     }
     Ok(())
 }
@@ -97,16 +106,19 @@ pub fn list_acme_auto_renew(conn: &Connection) -> Result<Vec<Certificate>, AppEr
     let mut stmt = conn.prepare(
         "SELECT * FROM certificates WHERE source = 'acme' AND auto_renew = 1 ORDER BY expires_at ASC",
     )?;
-    let certs = stmt.query_map([], |row| row_to_cert(row))?
+    let certs = stmt
+        .query_map([], |row| row_to_cert(row))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(certs)
 }
 
-pub fn find_by_dns_credential(conn: &Connection, dns_credential_id: &str) -> Result<Vec<Certificate>, AppError> {
-    let mut stmt = conn.prepare(
-        "SELECT * FROM certificates WHERE dns_credential_id = ?1",
-    )?;
-    let certs = stmt.query_map(params![dns_credential_id], |row| row_to_cert(row))?
+pub fn find_by_dns_credential(
+    conn: &Connection,
+    dns_credential_id: &str,
+) -> Result<Vec<Certificate>, AppError> {
+    let mut stmt = conn.prepare("SELECT * FROM certificates WHERE dns_credential_id = ?1")?;
+    let certs = stmt
+        .query_map(params![dns_credential_id], |row| row_to_cert(row))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(certs)
 }
@@ -159,10 +171,10 @@ pub fn fail_pending(conn: &Connection, id: &str, error: &str) -> Result<(), AppE
 
 pub fn get_expiring(conn: &Connection, within_days: i64) -> Result<Vec<Certificate>, AppError> {
     let threshold = (chrono::Utc::now() + chrono::Duration::days(within_days)).to_rfc3339();
-    let mut stmt = conn.prepare(
-        "SELECT * FROM certificates WHERE expires_at <= ?1 ORDER BY expires_at ASC",
-    )?;
-    let certs = stmt.query_map(params![threshold], |row| row_to_cert(row))?
+    let mut stmt =
+        conn.prepare("SELECT * FROM certificates WHERE expires_at <= ?1 ORDER BY expires_at ASC")?;
+    let certs = stmt
+        .query_map(params![threshold], |row| row_to_cert(row))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(certs)
 }

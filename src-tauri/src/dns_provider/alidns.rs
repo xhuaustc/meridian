@@ -41,7 +41,10 @@ impl AlidnsProvider {
             ("Version".into(), "2015-01-09".into()),
             ("AccessKeyId".into(), self.access_key_id.clone()),
             ("SignatureMethod".into(), "HMAC-SHA1".into()),
-            ("Timestamp".into(), now.format("%Y-%m-%dT%H:%M:%SZ").to_string()),
+            (
+                "Timestamp".into(),
+                now.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            ),
             ("SignatureVersion".into(), "1.0".into()),
             ("SignatureNonce".into(), uuid::Uuid::new_v4().to_string()),
             ("Action".into(), action.into()),
@@ -54,13 +57,7 @@ impl AlidnsProvider {
 
         let canonical: String = params
             .iter()
-            .map(|(k, v)| {
-                format!(
-                    "{}={}",
-                    percent_encode(k),
-                    percent_encode(v)
-                )
-            })
+            .map(|(k, v)| format!("{}={}", percent_encode(k), percent_encode(v)))
             .collect::<Vec<_>>()
             .join("&");
 
@@ -184,7 +181,10 @@ impl DnsProvider for AlidnsProvider {
         } else if let Some(msg) = body.get("Message").and_then(|v| v.as_str()) {
             Err(AppError::Dns(format!("Alidns error: {}", msg)))
         } else {
-            Err(AppError::Dns(format!("Unexpected Alidns response: {}", body)))
+            Err(AppError::Dns(format!(
+                "Unexpected Alidns response: {}",
+                body
+            )))
         }
     }
 
@@ -275,7 +275,10 @@ impl DnsProvider for AlidnsProvider {
         if let Some(total) = body.get("TotalCount").and_then(|v| v.as_u64()) {
             Ok(format!("Connected to Alidns. {} domain(s) found.", total))
         } else if let Some(msg) = body.get("Message").and_then(|v| v.as_str()) {
-            Err(AppError::Dns(format!("Alidns authentication failed: {}", msg)))
+            Err(AppError::Dns(format!(
+                "Alidns authentication failed: {}",
+                msg
+            )))
         } else {
             Err(AppError::Dns("Unexpected Alidns response".to_string()))
         }

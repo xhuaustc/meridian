@@ -179,10 +179,7 @@ impl DnsProvider for DnspodProvider {
             .await
             .map_err(|e| AppError::Dns(format!("Failed to parse DNSPod response: {}", e)))?;
 
-        if let Some(record_id) = body
-            .pointer("/Response/RecordId")
-            .and_then(|v| v.as_u64())
-        {
+        if let Some(record_id) = body.pointer("/Response/RecordId").and_then(|v| v.as_u64()) {
             Ok(format!("{}:{}", domain, record_id))
         } else if let Some(msg) = body
             .pointer("/Response/Error/Message")
@@ -190,7 +187,10 @@ impl DnsProvider for DnspodProvider {
         {
             Err(AppError::Dns(format!("DNSPod error: {}", msg)))
         } else {
-            Err(AppError::Dns(format!("Unexpected DNSPod response: {}", body)))
+            Err(AppError::Dns(format!(
+                "Unexpected DNSPod response: {}",
+                body
+            )))
         }
     }
 

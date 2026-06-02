@@ -70,7 +70,13 @@ fn detect_os_language() -> String {
     std::env::var("LANG")
         .or_else(|_| std::env::var("LC_ALL"))
         .or_else(|_| std::env::var("LC_MESSAGES"))
-        .map(|v| if v.to_lowercase().starts_with("zh") { "zh".to_string() } else { "en".to_string() })
+        .map(|v| {
+            if v.to_lowercase().starts_with("zh") {
+                "zh".to_string()
+            } else {
+                "en".to_string()
+            }
+        })
         .unwrap_or_else(|_| "en".to_string())
 }
 
@@ -84,14 +90,20 @@ fn detect_os_language() -> String {
     }
     // Use Windows GetUserDefaultLocaleName via PowerShell
     let mut cmd = std::process::Command::new("powershell");
-    cmd.args(["-NoProfile", "-Command", "[System.Globalization.CultureInfo]::CurrentUICulture.Name"]);
+    cmd.args([
+        "-NoProfile",
+        "-Command",
+        "[System.Globalization.CultureInfo]::CurrentUICulture.Name",
+    ]);
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
     if let Ok(output) = cmd.output() {
-        let locale = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+        let locale = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .to_lowercase();
         if locale.starts_with("zh") {
             return "zh".to_string();
         }
@@ -148,10 +160,14 @@ fn sync_tray_menu(data_dir: &Path, items: &TrayMenuItems, lang: &str) {
         "● Stopped".to_string()
     };
     let _ = items.status.set_text(&status_text);
-    let _ = items.show.set_text(if zh { "显示窗口" } else { "Show Window" });
+    let _ = items
+        .show
+        .set_text(if zh { "显示窗口" } else { "Show Window" });
     let _ = items.start.set_text(if zh { "启动" } else { "Start" });
     let _ = items.stop.set_text(if zh { "停止" } else { "Stop" });
-    let _ = items.add_rule.set_text(if zh { "添加代理" } else { "Add Proxy" });
+    let _ = items
+        .add_rule
+        .set_text(if zh { "添加代理" } else { "Add Proxy" });
     let _ = items.quit.set_text(if zh { "退出" } else { "Quit" });
 
     let _ = items.start.set_enabled(!running);
@@ -220,8 +236,7 @@ pub fn run() {
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
 
-            std::fs::create_dir_all(&app_data_dir)
-                .expect("Failed to create app data directory");
+            std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data directory");
 
             // Ensure nginx subdirectories exist
             let nginx_dir = app_data_dir.join("nginx");
@@ -238,8 +253,7 @@ pub fn run() {
 
             // Initialize database pool
             let db_path = app_data_dir.join("meridian.db");
-            let pool = store::init_pool(&db_path)
-                .expect("Failed to initialize database pool");
+            let pool = store::init_pool(&db_path).expect("Failed to initialize database pool");
 
             let state = AppState {
                 pool: pool.clone(),
@@ -306,7 +320,11 @@ pub fn run() {
             TrayIconBuilder::new()
                 .icon(tray_icon)
                 .icon_as_template(true)
-                .tooltip(if lang == "zh" { "轻渡 · Meridian" } else { "Meridian" })
+                .tooltip(if lang == "zh" {
+                    "轻渡 · Meridian"
+                } else {
+                    "Meridian"
+                })
                 .show_menu_on_left_click(false)
                 .menu(&tray_menu)
                 .on_menu_event(move |app, event| {
@@ -331,7 +349,8 @@ pub fn run() {
                         "add_rule" => {
                             if let Some(w) = app.get_webview_window("main") {
                                 show_window(&w);
-                                let _ = w.eval("window.__navigate && window.__navigate('/proxy/new')");
+                                let _ =
+                                    w.eval("window.__navigate && window.__navigate('/proxy/new')");
                             }
                         }
                         "quit" => {
@@ -376,9 +395,12 @@ pub fn run() {
                 if let Ok(db) = app_state.get_conn() {
                     let rules = store::proxy_repo::list_enabled(&db).unwrap_or_default();
                     let certs = store::cert_repo::list_all(&db).unwrap_or_default();
-                    let access_lists_raw = store::access_repo::list_all_lists(&db).unwrap_or_default();
+                    let access_lists_raw =
+                        store::access_repo::list_all_lists(&db).unwrap_or_default();
                     let worker_processes = store::settings_repo::get(&db, "worker_processes")
-                        .ok().flatten().unwrap_or_else(|| "2".to_string());
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| "2".to_string());
                     let mut access_lists = Vec::new();
                     for al in &access_lists_raw {
                         if let Ok(rules) = store::access_repo::list_rules_by_list(&db, &al.id) {
@@ -387,7 +409,11 @@ pub fn run() {
                     }
                     drop(db);
                     let _ = config_engine::generate_all_configs_with_settings(
-                        &app_data_dir, &rules, &certs, &access_lists, &worker_processes,
+                        &app_data_dir,
+                        &rules,
+                        &certs,
+                        &access_lists,
+                        &worker_processes,
                     );
                 }
             }
@@ -395,8 +421,14 @@ pub fn run() {
             // Auto-start engine if setting is enabled
             let auto_start = {
                 let app_state = app.state::<AppState>();
-                app_state.get_conn().ok()
-                    .and_then(|db| store::settings_repo::get(&db, "auto_start_engine").ok().flatten())
+                app_state
+                    .get_conn()
+                    .ok()
+                    .and_then(|db| {
+                        store::settings_repo::get(&db, "auto_start_engine")
+                            .ok()
+                            .flatten()
+                    })
                     .map_or(false, |v| v == "true")
             };
             if auto_start {
@@ -411,8 +443,14 @@ pub fn run() {
             // Log retention cleanup
             {
                 let app_state = app.state::<AppState>();
-                let retention_days = app_state.get_conn().ok()
-                    .and_then(|db| store::settings_repo::get(&db, "log_retention_days").ok().flatten())
+                let retention_days = app_state
+                    .get_conn()
+                    .ok()
+                    .and_then(|db| {
+                        store::settings_repo::get(&db, "log_retention_days")
+                            .ok()
+                            .flatten()
+                    })
                     .and_then(|v| v.parse::<u64>().ok())
                     .unwrap_or(7);
                 let logs_dir = app_data_dir.join("nginx/logs");
@@ -420,22 +458,13 @@ pub fn run() {
             }
 
             // Spawn auto-renewal background task
-            acme_client::renewal::spawn_renewal_task(
-                pool.clone(),
-                app_data_dir.clone(),
-            );
+            acme_client::renewal::spawn_renewal_task(pool.clone(), app_data_dir.clone());
 
             // Spawn nginx health check
-            nginx_manager::spawn_health_check(
-                app_data_dir.clone(),
-                app.handle().clone(),
-            );
+            nginx_manager::spawn_health_check(app_data_dir.clone(), app.handle().clone());
 
             // Spawn scheduled log cleanup
-            commands::logs::spawn_log_cleanup_task(
-                pool.clone(),
-                app_data_dir.clone(),
-            );
+            commands::logs::spawn_log_cleanup_task(pool.clone(), app_data_dir.clone());
 
             info!("Meridian initialized. Data dir: {:?}", app_data_dir);
 
@@ -449,12 +478,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             if let Some(window) = app.get_webview_window("main") {
                 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
-                let _ = apply_vibrancy(
-                    &window,
-                    NSVisualEffectMaterial::Sidebar,
-                    None,
-                    None,
-                );
+                let _ = apply_vibrancy(&window, NSVisualEffectMaterial::Sidebar, None, None);
                 info!("Applied macOS sidebar vibrancy effect");
             }
 
