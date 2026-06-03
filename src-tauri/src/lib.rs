@@ -174,6 +174,18 @@ fn sync_tray_menu(data_dir: &Path, items: &TrayMenuItems, lang: &str) {
     let _ = items.stop.set_enabled(running);
 }
 
+fn sync_tray_menu_before_show(data_dir: &Path, items: &TrayMenuItems, lang: &str) {
+    #[cfg(not(target_os = "windows"))]
+    {
+        sync_tray_menu(data_dir, items, lang);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = (data_dir, items, lang);
+    }
+}
+
 pub struct AppState {
     pub pool: store::DbPool,
     pub data_dir: PathBuf,
@@ -378,7 +390,7 @@ pub fn run() {
                             // Right click: sync menu state before it shows
                             let state = tray.app_handle().state::<AppState>();
                             let lang = get_language(&state);
-                            sync_tray_menu(&state.data_dir, &te_items, &lang);
+                            sync_tray_menu_before_show(&state.data_dir, &te_items, &lang);
                         }
                         _ => {}
                     }

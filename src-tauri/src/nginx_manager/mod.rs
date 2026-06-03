@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::Local;
 use tauri::Emitter;
@@ -295,6 +295,20 @@ fn is_process_running(pid: u32) -> bool {
         .unwrap_or(false)
 }
 
+fn wait_until_process_exits<F>(timeout: Duration, interval: Duration, mut is_running: F) -> bool
+where
+    F: FnMut() -> bool,
+{
+    let start = Instant::now();
+    while start.elapsed() < timeout {
+        if !is_running() {
+            return true;
+        }
+        thread::sleep(interval);
+    }
+    !is_running()
+}
+
 /// Start the nginx process.
 pub fn start(data_dir: &Path) -> Result<(), AppError> {
     let nginx = get_bundled_nginx_path()?;
@@ -345,6 +359,7 @@ pub fn stop(data_dir: &Path) -> Result<(), AppError> {
     let prefix = prefix_path(data_dir);
 
     let conf = config_path(data_dir);
+    let pid = read_pid(data_dir);
 
     let output = nginx_command(&nginx)
         .arg("-s")
@@ -364,6 +379,8 @@ pub fn stop(data_dir: &Path) -> Result<(), AppError> {
             || stderr.contains("error") && read_pid(data_dir).is_none()
         {
             info!("nginx was not running");
+            let _ = fs::remove_file(pid_path(data_dir));
+            WAS_RUNNING.store(false, Ordering::Relaxed);
             return Ok(());
         }
         error!("nginx stop failed: {}", stderr);
@@ -371,6 +388,21 @@ pub fn stop(data_dir: &Path) -> Result<(), AppError> {
         return Err(AppError::Nginx(format!("nginx stop failed: {}", stderr)));
     }
 
+    if let Some(pid) = pid {
+        let stopped =
+            wait_until_process_exits(Duration::from_secs(3), Duration::from_millis(100), || {
+                is_process_running(pid)
+            });
+        if !stopped {
+            let msg = format!("nginx did not stop within timeout (pid {})", pid);
+            error!("{}", msg);
+            append_to_error_log(data_dir, &msg);
+            return Err(AppError::Nginx(msg));
+        }
+    }
+
+    let _ = fs::remove_file(pid_path(data_dir));
+    WAS_RUNNING.store(false, Ordering::Relaxed);
     info!("nginx stopped successfully");
     append_to_error_log(data_dir, "nginx stopped successfully");
     Ok(())
@@ -564,4 +596,32 @@ fn parse_etime(etime: &str) -> Option<u64> {
     }
 
     Some(total_seconds)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn wait_until_process_exits_stops_polling_after_process_disappears() {
+        let mut checks = 0;
+
+        let stopped =
+            wait_until_process_exits(Duration::from_millis(50), Duration::from_millis(1), || {
+                checks += 1;
+                checks < 3
+            });
+
+        assert!(stopped);
+        assert_eq!(checks, 3);
+    }
+
+    #[test]
+    fn wait_until_process_exits_returns_false_after_timeout() {
+        let stopped =
+            wait_until_process_exits(Duration::from_millis(3), Duration::from_millis(1), || true);
+
+        assert!(!stopped);
+    }
 }
