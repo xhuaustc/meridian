@@ -119,7 +119,6 @@ jobs:
       # --- Prepare nginx sidecar ---
 
       - name: Restore nginx sidecar cache
-        if: github.event_name == 'workflow_dispatch'
         id: nginx-cache
         uses: actions/cache@v4
         with:
@@ -131,20 +130,19 @@ jobs:
 
       # macOS / Linux: compile nginx from source
       - name: Build nginx sidecar (Unix)
-        if: github.event_name == 'workflow_dispatch' && runner.os != 'Windows' && steps.nginx-cache.outputs.cache-hit != 'true'
+        if: runner.os != 'Windows' && steps.nginx-cache.outputs.cache-hit != 'true'
         run: |
           chmod +x ./scripts/prepare-nginx.sh
           ./scripts/prepare-nginx.sh ${{ matrix.rust-target }}
 
       # Windows: download official pre-built binary
       - name: Build nginx sidecar (Windows)
-        if: github.event_name == 'workflow_dispatch' && runner.os == 'Windows' && steps.nginx-cache.outputs.cache-hit != 'true'
+        if: runner.os == 'Windows' && steps.nginx-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           .\scripts\prepare-nginx.ps1 -NginxVersion $env:NGINX_VERSION -Target ${{ matrix.rust-target }}
 
       - name: Verify nginx sidecar
-        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
