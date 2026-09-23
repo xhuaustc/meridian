@@ -130,13 +130,6 @@ pub fn generate_server_block(
         nginx_path(&html_dir)
     ));
 
-    // Access list (applied at server level if all rules share the same access list)
-    if let Some(acl_id) = &first.access_list_id {
-        if let Some((acl, acl_rules)) = access_lists.iter().find(|(l, _)| &l.id == acl_id) {
-            out.push_str(&generate_access_directives(acl, acl_rules, "    "));
-        }
-    }
-
     // Location blocks for each rule
     for rule in rules {
         let path = rule.path_prefix.as_deref().unwrap_or("/");
@@ -194,12 +187,10 @@ pub fn generate_server_block(
             }
         }
 
-        // Per-location access list if different from server-level
-        if rule.access_list_id != first.access_list_id {
-            if let Some(acl_id) = &rule.access_list_id {
-                if let Some((acl, acl_rules)) = access_lists.iter().find(|(l, _)| &l.id == acl_id) {
-                    out.push_str(&generate_access_directives(acl, acl_rules, "        "));
-                }
+        // Keep access rules local to this location so unrelated paths do not inherit them.
+        if let Some(acl_id) = &rule.access_list_id {
+            if let Some((acl, acl_rules)) = access_lists.iter().find(|(l, _)| &l.id == acl_id) {
+                out.push_str(&generate_access_directives(acl, acl_rules, "        "));
             }
         }
 
@@ -272,5 +263,31 @@ mod tests {
         assert!(config.contains("        proxy_pass http://upstream_123456789abc;"));
         assert!(config.contains("        proxy_http_version 1.1;"));
         assert!(config.contains("        proxy_set_header Connection \"\";"));
+    }
+
+    #[test]
+    fn access_list_does_not_leak_to_other_paths() {
+        let mut private = make_http_rule(false);
+        private.path_prefix = Some("/private".to_string());
+        private.access_list_id = Some("acl".to_string());
+        let mut public = make_http_rule(false);
+        public.id = "public-rule".to_string();
+        public.path_prefix = Some("/public".to_string());
+        let acl = AccessList {
+            id: "acl".to_string(),
+            name: "private".to_string(),
+            default_policy: "deny".to_string(),
+            created_at: String::new(),
+        };
+        let config = generate_server_block(
+            &[&private, &public],
+            &[],
+            &[(acl, Vec::new())],
+            Path::new("/tmp"),
+        );
+        let public_location = config.split("location /public {").nth(1).unwrap();
+        assert!(config.contains("location /private {"));
+        assert!(config.contains("        deny all;"));
+        assert!(!public_location.contains("deny all;"));
     }
 }

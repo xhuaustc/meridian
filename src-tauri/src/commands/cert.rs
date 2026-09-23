@@ -1,3 +1,4 @@
+use std::fs::OpenOptions;
 use std::io::Write;
 
 use tauri::State;
@@ -80,9 +81,14 @@ pub async fn delete_certificate(id: String, state: State<'_, AppState>) -> Resul
     let cert = cert_repo::get_by_id(&db, &id)?;
     cert_repo::delete(&db, &id)?;
 
-    // Clean up certificate files
-    let _ = std::fs::remove_file(&cert.cert_path);
-    let _ = std::fs::remove_file(&cert.key_path);
+    // Only remove files created inside Meridian's certificate directory.
+    let managed_dir = state.data_dir.join("nginx").join("certs");
+    for file in [&cert.cert_path, &cert.key_path] {
+        let path = std::path::Path::new(file);
+        if path.parent() == Some(managed_dir.as_path()) && path.is_file() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 
     Ok(())
 }
@@ -111,7 +117,19 @@ pub async fn export_certificate(
     // Sanitize domain for filename: replace * with _wildcard
     let safe_domain = cert.domain.replace('*', "_wildcard");
 
-    let file = std::fs::File::create(&save_path)?;
+    let mut options = OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(&save_path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&save_path, std::fs::Permissions::from_mode(0o600))?;
+    }
     let mut zip = zip::ZipWriter::new(file);
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);

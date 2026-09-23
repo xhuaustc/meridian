@@ -14,7 +14,7 @@ import type { HostEntry } from '../types';
 
 export function HostsPage() {
   const { t } = useTranslation('common');
-  const { entries, loading, fetchEntries, createEntry, updateEntry, deleteEntry, toggleEntry, syncToSystem } =
+  const { entries, loading, syncStatus, fetchEntries, refreshSyncStatus, createEntry, updateEntry, deleteEntry, toggleEntry, syncToSystem } =
     useHostsStore();
   const addToast = useToastStore((s) => s.addToast);
   const formatError = useApiError();
@@ -32,7 +32,19 @@ export function HostsPage() {
 
   useEffect(() => {
     fetchEntries();
-  }, [fetchEntries]);
+    refreshSyncStatus();
+  }, [fetchEntries, refreshSyncStatus]);
+
+  const notifySaved = (successKey: string) => {
+    const status = useHostsStore.getState().syncStatus;
+    if (status?.synced === false) {
+      addToast('error', t('hosts.savedButSyncFailed'));
+    } else if (status?.synced === true) {
+      addToast('success', t(successKey));
+    } else {
+      addToast('error', t('hosts.savedButSyncUnknown'));
+    }
+  };
 
   const filteredEntries = search
     ? entries.filter(
@@ -61,7 +73,7 @@ export function HostsPage() {
     if (!formHostname.trim() || !formIp.trim()) return;
     try {
       await createEntry(formIp.trim(), formHostname.trim(), formComment.trim() || undefined);
-      addToast('success', t('hosts.createSuccess'));
+      notifySaved('hosts.createSuccess');
       setShowCreate(false);
     } catch (e) {
       addToast('error', formatError(e));
@@ -77,7 +89,7 @@ export function HostsPage() {
         formHostname.trim(),
         formComment.trim() || undefined,
       );
-      addToast('success', t('hosts.updateSuccess'));
+      notifySaved('hosts.updateSuccess');
       setEditTarget(null);
     } catch (e) {
       addToast('error', formatError(e));
@@ -88,7 +100,7 @@ export function HostsPage() {
     if (!deleteTarget) return;
     try {
       await deleteEntry(deleteTarget.id);
-      addToast('success', t('hosts.deleteSuccess'));
+      notifySaved('hosts.deleteSuccess');
     } catch (e) {
       addToast('error', formatError(e));
     }
@@ -98,7 +110,7 @@ export function HostsPage() {
   const handleToggle = async (entry: HostEntry) => {
     try {
       await toggleEntry(entry.id, !entry.enabled);
-      addToast('success', t('hosts.toggleSuccess'));
+      notifySaved('hosts.toggleSuccess');
     } catch (e) {
       addToast('error', formatError(e));
     }
@@ -180,6 +192,16 @@ export function HostsPage() {
         </Button>
       </ContentToolbar>
       <div className="p-6 overflow-y-auto flex-1">
+        {syncStatus?.synced === false && (
+          <div role="status" className="mb-4 rounded-[var(--radius-md)] border border-error px-4 py-3 text-[12px] text-error break-words">
+            {t('hosts.syncPending')}{syncStatus.error ? ` ${syncStatus.error}` : ''}
+          </div>
+        )}
+        {syncStatus?.synced === true && (
+          <div role="status" className="mb-4 text-[12px] text-text-secondary">
+            {t('hosts.syncUpToDate')}
+          </div>
+        )}
         {/* Search */}
         <div className="mb-4">
           <Input

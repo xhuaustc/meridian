@@ -15,9 +15,11 @@ import type {
   PortConflict,
   NginxStatus,
   LogChunk,
-  ExportData,
+  RecoveryPreview,
+  ConfigPreview,
   ProxyMetrics,
   HostEntry,
+  HostsSyncStatus,
   CreateHostEntry,
 } from '../types';
 
@@ -40,6 +42,12 @@ export const createProxy = (input: CreateProxyRule) =>
 
 export const updateProxy = (id: string, input: UpdateProxyRule) =>
   invoke<ProxyRule>('update_proxy', { id, input });
+
+export const previewCreateProxy = (input: CreateProxyRule) =>
+  invoke<ConfigPreview>('preview_create_proxy', { input });
+
+export const previewUpdateProxy = (id: string, input: UpdateProxyRule) =>
+  invoke<ConfigPreview>('preview_update_proxy', { id, input });
 
 export const deleteProxy = (id: string) => invoke<void>('delete_proxy', { id });
 
@@ -187,6 +195,8 @@ export const checkPortConflict = (
   domain?: string | null,
   pathPrefix?: string | null,
   excludeId?: string | null,
+  tlsMode?: string,
+  certificateId?: string | null,
 ) =>
   invoke<PortConflict[]>('check_port_conflict', {
     listenPort,
@@ -194,6 +204,8 @@ export const checkPortConflict = (
     domain: domain ?? undefined,
     pathPrefix: pathPrefix ?? undefined,
     excludeId: excludeId ?? undefined,
+    tlsMode: tlsMode ?? undefined,
+    certificateId: certificateId ?? undefined,
   });
 
 // --- Logs ---
@@ -218,12 +230,14 @@ export const setSetting = (key: string, value: string) =>
 
 export const listSettings = () => invoke<AppSetting[]>('list_settings');
 
-export const exportData = () => invoke<ExportData>('export_data');
+export const createRecoveryBundle = (savePath: string, passphrase: string) =>
+  invoke<RecoveryPreview>('create_recovery_bundle', { savePath, passphrase });
 
-export const importData = (data: ExportData) =>
-  invoke<void>('import_data', { data });
+export const previewRecoveryBundle = (filePath: string, passphrase: string) =>
+  invoke<RecoveryPreview>('preview_recovery_bundle', { filePath, passphrase });
 
-export const backupDatabase = () => invoke<string>('backup_database');
+export const restoreRecoveryBundle = (filePath: string, passphrase: string) =>
+  invoke<string>('restore_recovery_bundle', { filePath, passphrase });
 
 // --- Hosts ---
 export const listHosts = (keyword?: string) =>
@@ -250,6 +264,9 @@ export const checkHostnameExists = (hostname: string, excludeId?: string) =>
 
 export const syncHostsFile = () =>
   invoke<void>('sync_hosts_file');
+
+export const getHostsSyncStatus = () =>
+  invoke<HostsSyncStatus>('get_hosts_sync_status');
 
 // --- Tray ---
 export const syncTray = () => invoke<void>('sync_tray');

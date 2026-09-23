@@ -9,6 +9,7 @@ use instant_acme::{
 use rcgen::{Certificate, CertificateParams};
 use tracing::{info, warn};
 
+use crate::cert_manager;
 use crate::dns_provider::DnsProvider;
 use crate::error::AppError;
 
@@ -18,8 +19,8 @@ const PROPAGATION_POLL_INTERVAL_SECS: u64 = 5;
 
 /// Result of a successful ACME certificate issuance.
 pub struct AcmeCertResult {
-    pub cert_pem: String,
-    pub key_pem: String,
+    pub cert_path: String,
+    pub key_path: String,
     pub expires_at: String,
 }
 
@@ -116,6 +117,8 @@ pub async fn request_certificate(
     let cert_pem = poll_for_certificate(&mut order).await?;
     let key_pem = cert.serialize_private_key_pem();
 
+    let expires_at = parse_cert_expiry(&cert_pem)?;
+
     // Save to files
     let id = uuid::Uuid::new_v4().to_string();
     let certs_path = data_dir.join("nginx").join("certs");
@@ -124,18 +127,12 @@ pub async fn request_certificate(
     let cert_file = certs_path.join(format!("{}.cert.pem", id));
     let key_file = certs_path.join(format!("{}.key.pem", id));
 
-    fs::write(&cert_file, &cert_pem)?;
-    fs::write(&key_file, &key_pem)?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&cert_file, fs::Permissions::from_mode(0o600))?;
-        fs::set_permissions(&key_file, fs::Permissions::from_mode(0o600))?;
-    }
-
-    // Parse certificate expiry
-    let expires_at = parse_cert_expiry(&cert_pem)?;
+    cert_manager::write_certificate_pair(
+        &cert_file,
+        &key_file,
+        cert_pem.as_bytes(),
+        key_pem.as_bytes(),
+    )?;
 
     info!(
         "ACME certificate issued for {:?}, saved to {:?}",
@@ -143,8 +140,8 @@ pub async fn request_certificate(
     );
 
     Ok(AcmeCertResult {
-        cert_pem: cert_file.to_string_lossy().to_string(),
-        key_pem: key_file.to_string_lossy().to_string(),
+        cert_path: cert_file.to_string_lossy().to_string(),
+        key_path: key_file.to_string_lossy().to_string(),
         expires_at,
     })
 }

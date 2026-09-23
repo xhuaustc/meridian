@@ -1,8 +1,10 @@
 use tauri::State;
 
+use crate::config_engine;
 use crate::error::AppError;
-use crate::store::models::{AppSetting, ExportData};
-use crate::store::{access_repo, cert_repo, proxy_repo, settings_repo};
+use crate::recovery::{self, RecoveryPreview};
+use crate::store::models::AppSetting;
+use crate::store::settings_repo;
 use crate::AppState;
 
 #[tauri::command]
@@ -20,7 +22,22 @@ pub async fn set_setting(
     value: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let db = state.get_conn()?;
+    let mut db = state.get_conn()?;
+    if key == "worker_processes" {
+        if value != "auto" && !value.parse::<u8>().is_ok_and(|n| (1..=64).contains(&n)) {
+            return Err(AppError::Validation(
+                "Worker processes must be auto or 1-64".into(),
+            ));
+        }
+        let tx = db.transaction()?;
+        settings_repo::set(&tx, &key, &value)?;
+        config_engine::apply_db_state(&tx, &state.data_dir)?;
+        if let Err(error) = tx.commit() {
+            let _ = config_engine::apply_db_state(&db, &state.data_dir);
+            return Err(AppError::Database(error));
+        }
+        return Ok(());
+    }
     settings_repo::set(&db, &key, &value)
 }
 
@@ -31,139 +48,36 @@ pub async fn list_settings(state: State<'_, AppState>) -> Result<Vec<AppSetting>
 }
 
 #[tauri::command]
-pub async fn export_data(state: State<'_, AppState>) -> Result<ExportData, AppError> {
-    let db = state.get_conn()?;
-    let proxy_rules = proxy_repo::list_all(&db)?;
-    let certificates = cert_repo::list_all(&db)?;
-    let access_lists = access_repo::list_all_lists(&db)?;
-    let access_rules = access_repo::list_all_rules(&db)?;
-    let settings = settings_repo::list_all(&db)?;
-
-    Ok(ExportData {
-        version: "1.0".to_string(),
-        exported_at: chrono::Utc::now().to_rfc3339(),
-        proxy_rules,
-        certificates,
-        access_lists,
-        access_rules,
-        settings,
-    })
-}
-
-#[tauri::command]
-pub async fn import_data(data: ExportData, state: State<'_, AppState>) -> Result<(), AppError> {
-    let db = state.get_conn()?;
-
-    // Import in a transaction
-    db.execute_batch("BEGIN TRANSACTION;")?;
-
-    let result = (|| -> Result<(), AppError> {
-        // Clear existing data
-        db.execute_batch(
-            "DELETE FROM access_rules;
-             DELETE FROM proxy_rules;
-             DELETE FROM certificates;
-             DELETE FROM access_lists;
-             DELETE FROM app_settings;",
-        )?;
-
-        // Import settings
-        for setting in &data.settings {
-            settings_repo::set(&db, &setting.key, &setting.value)?;
-        }
-
-        // Import certificates
-        for cert in &data.certificates {
-            db.execute(
-                "INSERT INTO certificates (id, name, domain, cert_path, key_path, source, expires_at, auto_renew, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                rusqlite::params![
-                    cert.id,
-                    cert.name,
-                    cert.domain,
-                    cert.cert_path,
-                    cert.key_path,
-                    cert.source,
-                    cert.expires_at,
-                    if cert.auto_renew { 1 } else { 0 },
-                    cert.created_at,
-                ],
-            )?;
-        }
-
-        // Import access lists
-        for al in &data.access_lists {
-            db.execute(
-                "INSERT INTO access_lists (id, name, default_policy, created_at)
-                 VALUES (?1, ?2, ?3, ?4)",
-                rusqlite::params![al.id, al.name, al.default_policy, al.created_at],
-            )?;
-        }
-
-        // Import access rules
-        for ar in &data.access_rules {
-            db.execute(
-                "INSERT INTO access_rules (id, access_list_id, action, ip_cidr, sort_order, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                rusqlite::params![
-                    ar.id,
-                    ar.access_list_id,
-                    ar.action,
-                    ar.ip_cidr,
-                    ar.sort_order,
-                    ar.created_at,
-                ],
-            )?;
-        }
-
-        // Import proxy rules
-        for pr in &data.proxy_rules {
-            db.execute(
-                "INSERT INTO proxy_rules (id, name, proxy_type, enabled, listen_port, listen_host, domain, path_prefix, upstream_host, upstream_port, upstream_scheme, tls_mode, certificate_id, access_list_id, websocket, keep_alive, custom_headers, upstream_targets, sort_order, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
-                rusqlite::params![
-                    pr.id,
-                    pr.name,
-                    pr.proxy_type,
-                    if pr.enabled { 1 } else { 0 },
-                    pr.listen_port as u32,
-                    pr.listen_host,
-                    pr.domain,
-                    pr.path_prefix,
-                    pr.upstream_host,
-                    pr.upstream_port as u32,
-                    pr.upstream_scheme,
-                    pr.tls_mode,
-                    pr.certificate_id,
-                    pr.access_list_id,
-                    if pr.websocket { 1 } else { 0 },
-                    if pr.keep_alive { 1 } else { 0 },
-                    pr.custom_headers,
-                    pr.upstream_targets,
-                    pr.sort_order,
-                    pr.created_at,
-                    pr.updated_at,
-                ],
-            )?;
-        }
-
-        Ok(())
-    })();
-
-    match result {
-        Ok(()) => {
-            db.execute_batch("COMMIT;")?;
-            Ok(())
-        }
-        Err(e) => {
-            let _ = db.execute_batch("ROLLBACK;");
-            Err(e)
-        }
-    }
-}
-
-#[tauri::command]
-pub async fn backup_database(state: State<'_, AppState>) -> Result<String, AppError> {
+pub async fn create_recovery_bundle(
+    save_path: String,
+    passphrase: String,
+    state: State<'_, AppState>,
+) -> Result<RecoveryPreview, AppError> {
     let db_path = state.data_dir.join("meridian.db");
-    crate::store::backup_database(&db_path)
+    recovery::create_bundle(&db_path, std::path::Path::new(&save_path), &passphrase)
+}
+
+#[tauri::command]
+pub async fn preview_recovery_bundle(
+    file_path: String,
+    passphrase: String,
+) -> Result<RecoveryPreview, AppError> {
+    recovery::preview_bundle(std::path::Path::new(&file_path), &passphrase)
+}
+
+#[tauri::command]
+pub async fn restore_recovery_bundle(
+    file_path: String,
+    passphrase: String,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let db_path = state.data_dir.join("meridian.db");
+    let mut db = state.get_conn()?;
+    recovery::restore_bundle(
+        &mut db,
+        &db_path,
+        &state.data_dir,
+        std::path::Path::new(&file_path),
+        &passphrase,
+    )
 }

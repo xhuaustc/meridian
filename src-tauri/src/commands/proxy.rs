@@ -4,12 +4,36 @@ use tauri::State;
 
 use crate::config_engine;
 use crate::error::AppError;
-use crate::store::models::{
-    AccessList, AccessRule, Certificate, CreateProxyRule, ProxyRule, UpdateProxyRule,
-};
-use crate::store::{access_repo, cert_repo, proxy_repo};
+use crate::store::models::{CreateProxyRule, ProxyRule, UpdateProxyRule};
+use crate::store::proxy_repo;
 use crate::validators;
 use crate::AppState;
+
+#[tauri::command]
+pub async fn preview_create_proxy(
+    input: CreateProxyRule,
+    state: State<'_, AppState>,
+) -> Result<config_engine::ConfigPreview, AppError> {
+    validators::validate_create_proxy(&input)?;
+    let mut db = state.get_conn()?;
+    let tx = db.transaction()?;
+    proxy_repo::create(&tx, &input)?;
+    config_engine::preview_db_state(&tx, &state.data_dir)
+}
+
+#[tauri::command]
+pub async fn preview_update_proxy(
+    id: String,
+    input: UpdateProxyRule,
+    state: State<'_, AppState>,
+) -> Result<config_engine::ConfigPreview, AppError> {
+    let mut db = state.get_conn()?;
+    let existing = proxy_repo::get_by_id(&db, &id)?;
+    validators::validate_update_proxy_merged(&input, &existing)?;
+    let tx = db.transaction()?;
+    proxy_repo::update(&tx, &id, &input)?;
+    config_engine::preview_db_state(&tx, &state.data_dir)
+}
 
 /// Response for list_proxies with optional stats.
 #[derive(serde::Serialize)]
@@ -100,11 +124,12 @@ where
     let mut db = state.get_conn()?;
     let tx = db.transaction()?;
     let result = change(&tx)?;
-    let (rules, certs, access_lists) = load_config_data(&tx)?;
-
-    match config_engine::apply_and_reload(&state.data_dir, &rules, &certs, &access_lists) {
+    match config_engine::apply_db_state(&tx, &state.data_dir) {
         Ok(_) => {
-            tx.commit()?;
+            if let Err(error) = tx.commit() {
+                let _ = config_engine::apply_db_state(&db, &state.data_dir);
+                return Err(AppError::Database(error));
+            }
             Ok(result)
         }
         Err(e) => {
@@ -112,26 +137,4 @@ where
             Err(e)
         }
     }
-}
-
-fn load_config_data(
-    db: &rusqlite::Connection,
-) -> Result<
-    (
-        Vec<ProxyRule>,
-        Vec<Certificate>,
-        Vec<(AccessList, Vec<AccessRule>)>,
-    ),
-    AppError,
-> {
-    let rules = proxy_repo::list_enabled(&db)?;
-    let certs = cert_repo::list_all(&db)?;
-    let access_lists_raw = access_repo::list_all_lists(&db)?;
-
-    let mut access_lists = Vec::new();
-    for al in &access_lists_raw {
-        let al_rules = access_repo::list_rules_by_list(&db, &al.id)?;
-        access_lists.push((al.clone(), al_rules));
-    }
-    Ok((rules, certs, access_lists))
 }

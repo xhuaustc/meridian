@@ -1,11 +1,37 @@
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::error::AppError;
 use crate::hosts_manager;
 use crate::store::hosts_repo;
 use crate::store::models::{CreateHostEntry, HostEntry};
+use crate::store::settings_repo;
 use crate::validators;
 use crate::AppState;
+
+const HOSTS_SYNC_STATUS_KEY: &str = "hosts_sync_status";
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct HostsSyncStatus {
+    pub synced: Option<bool>,
+    pub checked_at: Option<String>,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_hosts_sync_status(
+    state: State<'_, AppState>,
+) -> Result<HostsSyncStatus, AppError> {
+    let db = state.get_conn()?;
+    match settings_repo::get(&db, HOSTS_SYNC_STATUS_KEY)? {
+        Some(value) => Ok(serde_json::from_str(&value)?),
+        None => Ok(HostsSyncStatus {
+            synced: None,
+            checked_at: None,
+            error: None,
+        }),
+    }
+}
 
 #[tauri::command]
 pub async fn list_hosts(
@@ -147,5 +173,13 @@ fn sync_hosts_to_system(state: &AppState) -> Result<(), AppError> {
     let db = state.get_conn()?;
     let entries = hosts_repo::list_enabled(&db)?;
     drop(db);
-    hosts_manager::sync_to_system(&entries)
+    let result = hosts_manager::sync_to_system(&entries);
+    let status = HostsSyncStatus {
+        synced: Some(result.is_ok()),
+        checked_at: Some(chrono::Utc::now().to_rfc3339()),
+        error: result.as_ref().err().map(|e| e.to_string()),
+    };
+    let db = state.get_conn()?;
+    settings_repo::set(&db, HOSTS_SYNC_STATUS_KEY, &serde_json::to_string(&status)?)?;
+    result
 }

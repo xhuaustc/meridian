@@ -31,15 +31,6 @@ fn row_to_proxy(row: &rusqlite::Row) -> rusqlite::Result<ProxyRule> {
     })
 }
 
-pub fn list_all(conn: &Connection) -> Result<Vec<ProxyRule>, AppError> {
-    let mut stmt =
-        conn.prepare("SELECT * FROM proxy_rules ORDER BY sort_order ASC, created_at ASC")?;
-    let rules = stmt
-        .query_map([], |row| row_to_proxy(row))?
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(rules)
-}
-
 pub fn get_by_id(conn: &Connection, id: &str) -> Result<ProxyRule, AppError> {
     let mut stmt = conn.prepare("SELECT * FROM proxy_rules WHERE id = ?1")?;
     let rule = stmt

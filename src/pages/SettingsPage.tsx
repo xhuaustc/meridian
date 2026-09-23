@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Download, Upload, Database } from 'lucide-react';
+import { Download, Upload } from 'lucide-react';
 import { getVersion } from '@tauri-apps/api/app';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { save, open } from '@tauri-apps/plugin-dialog';
-import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import { ContentToolbar } from '../components/layout/ContentToolbar';
 import { Button } from '../components/ui/Button';
 import { Toggle } from '../components/ui/Toggle';
@@ -18,7 +17,7 @@ import { useAccessStore } from '../stores/access-store';
 import { useHostsStore } from '../stores/hosts-store';
 import * as api from '../lib/api';
 import { cn } from '../lib/utils';
-import type { ExportData } from '../types';
+import type { RecoveryPreview } from '../types';
 
 export function SettingsPage() {
   const { t, i18n } = useTranslation('common');
@@ -30,7 +29,10 @@ export function SettingsPage() {
   const fetchLists = useAccessStore((s) => s.fetchLists);
   const fetchEntries = useHostsStore((s) => s.fetchEntries);
   const [showImportConfirm, setShowImportConfirm] = useState(false);
-  const [importPayload, setImportPayload] = useState<ExportData | null>(null);
+  const [recoveryPath, setRecoveryPath] = useState('');
+  const [recoveryPreview, setRecoveryPreview] = useState<RecoveryPreview | null>(null);
+  const [passphrase, setPassphrase] = useState('');
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [autoStartEngine, setAutoStartEngine] = useState(false);
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [logRetentionDays, setLogRetentionDays] = useState('7');
@@ -54,60 +56,69 @@ export function SettingsPage() {
   }, []);
 
   const handleExport = async () => {
+    if (Array.from(passphrase).length < 12) {
+      addToast('error', t('settings.passphraseHint'));
+      return;
+    }
     try {
-      const data = await api.exportData();
       const filePath = await save({
-        defaultPath: `meridian-export-${new Date().toISOString().split('T')[0]}.json`,
-        filters: [{ name: 'JSON', extensions: ['json'] }],
+        defaultPath: `meridian-recovery-${new Date().toISOString().split('T')[0]}.meridian`,
+        filters: [{ name: 'Meridian recovery', extensions: ['meridian'] }],
       });
-      if (!filePath) return; // user cancelled
-      await writeTextFile(filePath, JSON.stringify(data, null, 2));
+      if (!filePath) return;
+      setRecoveryBusy(true);
+      await api.createRecoveryBundle(filePath, passphrase);
+      setPassphrase('');
       addToast('success', t('settings.exportSuccess'));
     } catch (e) {
       addToast('error', formatError(e));
+    } finally {
+      setRecoveryBusy(false);
     }
   };
 
   const handleImportFile = async () => {
     try {
+      if (Array.from(passphrase).length < 12) {
+        addToast('error', t('settings.passphraseHint'));
+        return;
+      }
       const filePath = await open({
-        filters: [{ name: 'JSON', extensions: ['json'] }],
+        filters: [{ name: 'Meridian recovery', extensions: ['meridian'] }],
         multiple: false,
       });
-      if (!filePath) return; // user cancelled
-      const text = await readTextFile(filePath as string);
-      const data = JSON.parse(text) as ExportData;
-      setImportPayload(data);
+      if (!filePath || typeof filePath !== 'string') return;
+      setRecoveryBusy(true);
+      const preview = await api.previewRecoveryBundle(filePath, passphrase);
+      setRecoveryPath(filePath);
+      setRecoveryPreview(preview);
       setShowImportConfirm(true);
-    } catch {
-      addToast('error', t('common.error'));
+    } catch (e) {
+      addToast('error', formatError(e));
+    } finally {
+      setRecoveryBusy(false);
     }
   };
 
   const handleImport = async () => {
-    if (!importPayload) return;
+    if (!recoveryPath || !recoveryPreview) return;
     try {
-      await api.importData(importPayload);
-      // Refresh all stores with imported data
+      setRecoveryBusy(true);
+      const backupPath = await api.restoreRecoveryBundle(recoveryPath, passphrase);
       await Promise.all([
         fetchProxies(),
         fetchCertificates(),
         fetchLists(),
         fetchEntries(),
       ]);
-      addToast('success', t('settings.importSuccess'));
-      setImportPayload(null);
+      addToast('success', t('settings.importSuccess', { path: backupPath }));
+      setRecoveryPath('');
+      setRecoveryPreview(null);
+      setPassphrase('');
     } catch (e) {
       addToast('error', formatError(e));
-    }
-  };
-
-  const handleBackup = async () => {
-    try {
-      const path = await api.backupDatabase();
-      addToast('success', t('settings.backupSuccess', { path }));
-    } catch (e) {
-      addToast('error', formatError(e));
+    } finally {
+      setRecoveryBusy(false);
     }
   };
 
@@ -225,8 +236,10 @@ export function SettingsPage() {
             <button
               onClick={async () => {
                 const next = workerProcesses === 'auto' ? '2' : 'auto';
-                setWorkerProcesses(next);
-                await api.setSetting('worker_processes', next);
+                try {
+                  await api.setSetting('worker_processes', next);
+                  setWorkerProcesses(next);
+                } catch (e) { addToast('error', formatError(e)); }
               }}
               className={cn(
                 'px-3 py-[5px] text-[12px] border rounded-[var(--radius-sm)] cursor-pointer',
@@ -247,8 +260,15 @@ export function SettingsPage() {
                 onChange={(e) => setWorkerProcesses(e.target.value)}
                 onBlur={async () => {
                   const val = Math.max(1, Math.min(64, parseInt(workerProcesses) || 2));
-                  setWorkerProcesses(String(val));
-                  await api.setSetting('worker_processes', String(val));
+                  try {
+                    await api.setSetting('worker_processes', String(val));
+                    setWorkerProcesses(String(val));
+                  } catch (e) {
+                    addToast('error', formatError(e));
+                    api.getSetting('worker_processes')
+                      .then((current) => setWorkerProcesses(current || '2'))
+                      .catch(() => {});
+                  }
                 }}
               />
             )}
@@ -291,40 +311,40 @@ export function SettingsPage() {
           {t('settings.dataManagement')}
         </h2>
         <div className="flex flex-col gap-3">
+          <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3">
+            <label htmlFor="recovery-passphrase" className="block text-[13px] font-medium mb-1">{t('settings.passphrase')}</label>
+            <input
+              id="recovery-passphrase"
+              type="password"
+              autoComplete="new-password"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              className="w-full px-3 py-2 border border-border rounded-[var(--radius-sm)] text-[12px] bg-bg-primary text-text-primary outline-none focus:border-accent"
+            />
+            <div className="text-[11px] text-text-tertiary mt-1">{t('settings.passphraseHint')}</div>
+          </div>
           <div className="flex items-center justify-between bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3">
             <div>
               <div className="text-[13px] font-medium">{t('settings.export')}</div>
               <div className="text-[11px] text-text-tertiary mt-0.5">
-                JSON
+                {t('settings.recoveryDesc')}
               </div>
             </div>
-            <Button size="sm" onClick={handleExport}>
+            <Button size="sm" className="shrink-0 whitespace-nowrap" disabled={recoveryBusy} onClick={handleExport}>
               <Download className="w-3.5 h-3.5" />
-              {t('settings.export')}
+              {t('settings.exportAction')}
             </Button>
           </div>
           <div className="flex items-center justify-between bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3">
             <div>
               <div className="text-[13px] font-medium">{t('settings.import')}</div>
               <div className="text-[11px] text-text-tertiary mt-0.5">
-                JSON
+                {t('settings.restoreDesc')}
               </div>
             </div>
-            <Button size="sm" onClick={handleImportFile}>
+            <Button size="sm" className="shrink-0 whitespace-nowrap" disabled={recoveryBusy} onClick={handleImportFile}>
               <Upload className="w-3.5 h-3.5" />
-              {t('settings.import')}
-            </Button>
-          </div>
-          <div className="flex items-center justify-between bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3">
-            <div>
-              <div className="text-[13px] font-medium">{t('settings.backup')}</div>
-              <div className="text-[11px] text-text-tertiary mt-0.5">
-                SQLite
-              </div>
-            </div>
-            <Button size="sm" onClick={handleBackup}>
-              <Database className="w-3.5 h-3.5" />
-              {t('settings.backup')}
+              {t('settings.importAction')}
             </Button>
           </div>
         </div>
@@ -351,11 +371,17 @@ export function SettingsPage() {
         open={showImportConfirm}
         onClose={() => {
           setShowImportConfirm(false);
-          setImportPayload(null);
+          setRecoveryPath('');
+          setRecoveryPreview(null);
         }}
         onConfirm={handleImport}
         title={t('settings.import')}
-        message={t('settings.importConfirm')}
+        message={t('settings.importConfirm', {
+          proxies: recoveryPreview?.proxy_count ?? 0,
+          certificates: recoveryPreview?.certificate_count ?? 0,
+          hosts: recoveryPreview?.host_count ?? 0,
+          credentials: recoveryPreview?.dns_credential_count ?? 0,
+        })}
         danger
       />
       </div>

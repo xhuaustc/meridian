@@ -1,4 +1,5 @@
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::{Duration, Utc};
@@ -11,6 +12,37 @@ use crate::store::models::CreateCertificate;
 /// Directory within data_dir where certificates are stored.
 fn certs_dir(data_dir: &Path) -> PathBuf {
     data_dir.join("nginx").join("certs")
+}
+
+fn write_private_file(path: &Path, content: &[u8]) -> Result<(), AppError> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    if let Err(error) = file.write_all(content).and_then(|_| file.sync_all()) {
+        drop(file);
+        let _ = fs::remove_file(path);
+        return Err(AppError::Io(error));
+    }
+    Ok(())
+}
+
+pub fn write_certificate_pair(
+    cert_path: &Path,
+    key_path: &Path,
+    cert: &[u8],
+    key: &[u8],
+) -> Result<(), AppError> {
+    write_private_file(cert_path, cert)?;
+    if let Err(error) = write_private_file(key_path, key) {
+        let _ = fs::remove_file(cert_path);
+        return Err(error);
+    }
+    Ok(())
 }
 
 /// Generate a self-signed certificate for the given domain.
@@ -59,16 +91,12 @@ pub fn generate_self_signed(
     let cert_file = certs_path.join(format!("{}.cert.pem", id));
     let key_file = certs_path.join(format!("{}.key.pem", id));
 
-    fs::write(&cert_file, &cert_pem)?;
-    fs::write(&key_file, &key_pem)?;
-
-    // Set file permissions to 0600 on Unix
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&cert_file, fs::Permissions::from_mode(0o600))?;
-        fs::set_permissions(&key_file, fs::Permissions::from_mode(0o600))?;
-    }
+    write_certificate_pair(
+        &cert_file,
+        &key_file,
+        cert_pem.as_bytes(),
+        key_pem.as_bytes(),
+    )?;
 
     let expires_at = not_after.to_rfc3339();
 
@@ -125,15 +153,12 @@ pub fn import_certificate(
     let cert_file = certs_path.join(format!("{}.cert.pem", id));
     let key_file = certs_path.join(format!("{}.key.pem", id));
 
-    fs::write(&cert_file, cert_pem)?;
-    fs::write(&key_file, key_pem)?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&cert_file, fs::Permissions::from_mode(0o600))?;
-        fs::set_permissions(&key_file, fs::Permissions::from_mode(0o600))?;
-    }
+    write_certificate_pair(
+        &cert_file,
+        &key_file,
+        cert_pem.as_bytes(),
+        key_pem.as_bytes(),
+    )?;
 
     info!("Imported certificate for '{}' at {:?}", domain, cert_file);
 

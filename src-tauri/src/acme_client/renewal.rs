@@ -5,6 +5,7 @@ use rusqlite::Connection;
 use tokio::sync::Mutex as TokioMutex;
 use tracing::{error, info, warn};
 
+use crate::config_engine;
 use crate::dns_provider;
 use crate::nginx_manager;
 use crate::store::cert_repo;
@@ -26,7 +27,7 @@ pub async fn auto_renew_check(pool: &DbPool, data_dir: &Path) {
 
     info!("Starting auto-renewal check");
 
-    let conn = match pool.get() {
+    let mut conn = match pool.get() {
         Ok(c) => c,
         Err(e) => {
             error!("Failed to get DB connection for renewal: {}", e);
@@ -113,15 +114,53 @@ pub async fn auto_renew_check(pool: &DbPool, data_dir: &Path) {
         let result = renew_single_cert(data_dir, &domains, &dns_cred, &acme_account).await;
 
         match result {
-            Ok(new_expires) => {
-                let _ = cert_repo::update_cert_after_renewal(&conn, &cert.id, &new_expires, None);
-                info!(
-                    "Certificate '{}' renewed, new expiry: {}",
-                    cert.name, new_expires
-                );
-
-                if nginx_manager::status(data_dir).status == "running" {
-                    let _ = nginx_manager::reload(data_dir);
+            Ok(issued) => {
+                let applied = (|| -> Result<(), crate::error::AppError> {
+                    let tx = conn.transaction()?;
+                    cert_repo::finish_renewal(
+                        &tx,
+                        &cert.id,
+                        &issued.cert_path,
+                        &issued.key_path,
+                        &issued.expires_at,
+                    )?;
+                    config_engine::apply_db_state(&tx, data_dir)?;
+                    if let Err(error) = tx.commit() {
+                        let _ = config_engine::apply_db_state(&conn, data_dir);
+                        return Err(crate::error::AppError::Database(error));
+                    }
+                    Ok(())
+                })();
+                match applied {
+                    Ok(()) => {
+                        info!(
+                            "Certificate '{}' renewed, new expiry: {}",
+                            cert.name, issued.expires_at
+                        );
+                        let managed_dir = data_dir.join("nginx").join("certs");
+                        for old_path in [&cert.cert_path, &cert.key_path] {
+                            let path = Path::new(old_path);
+                            if path.parent() == Some(managed_dir.as_path()) && path.is_file() {
+                                let _ = std::fs::remove_file(path);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to apply renewed certificate '{}': {}", cert.name, e);
+                        let managed_dir = data_dir.join("nginx").join("certs");
+                        for file in [&issued.cert_path, &issued.key_path] {
+                            let path = Path::new(file);
+                            if path.parent() == Some(managed_dir.as_path()) && path.is_file() {
+                                let _ = std::fs::remove_file(path);
+                            }
+                        }
+                        let _ = cert_repo::update_cert_after_renewal(
+                            &conn,
+                            &cert.id,
+                            &cert.expires_at,
+                            Some(&e.to_string()),
+                        );
+                    }
                 }
             }
             Err(e) => {
@@ -181,16 +220,14 @@ async fn renew_single_cert(
     domains: &[String],
     dns_cred: &DnsCredential,
     acme_account: &AcmeAccount,
-) -> Result<String, crate::error::AppError> {
+) -> Result<super::AcmeCertResult, crate::error::AppError> {
     let provider = dns_provider::create_provider(&dns_cred.provider, &dns_cred.credentials_json)?;
 
     let (account, _) =
         super::get_or_create_account(Some(&acme_account.account_key_pem), &acme_account.email)
             .await?;
 
-    let result = super::request_certificate(&account, domains, provider.as_ref(), data_dir).await?;
-
-    Ok(result.expires_at)
+    super::request_certificate(&account, domains, provider.as_ref(), data_dir).await
 }
 
 /// Spawn the auto-renewal background task.

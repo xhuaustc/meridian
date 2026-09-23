@@ -40,6 +40,7 @@ async-trait = "0.1"
 url = "2"
 image = { version = "0.25", default-features = false, features = ["png"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+ring = "0.17"
 window-vibrancy = "0.7.1"
 r2d2 = "0.8"
 r2d2_sqlite = "0.24"

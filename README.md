@@ -10,10 +10,14 @@ A local Nginx proxy manager with a GUI for managing reverse proxies, SSL certifi
 - **证书管理** — 本地自签证书生成，ACME DNS-01 自动申请（Let's Encrypt）
 - **访问控制** — IP 黑白名单，支持排序与去重
 - **配置引擎** — 自动生成 Nginx 配置，事务性写入带备份回滚
+- **配置预览** — 保存代理规则前查看候选配置文件变化和 `nginx -t` 结果
+- **加密恢复包** — 备份 SQLite、证书私钥、DNS 凭据和 hosts 记录，支持恢复前预览
 - **Nginx 生命周期** — 启动 / 停止 / 重载 / 配置测试，状态实时同步
 - **系统托盘** — 关闭窗口驻留后台，右键菜单快捷操作
 - **监控面板** — 代理流量与状态监控（开发中）
 - **国际化** — 中文 / English 双语切换
+
+恢复包在「设置 → 数据管理」中创建和还原。使用至少 12 字符的密码，并保管好密码和 `.meridian` 文件；应用无法找回密码。还原会先备份现有数据库，再校验并应用配置；系统 hosts 文件需要在 Hosts 页面另行同步。恢复包用于相同版本应用之间迁移，跨版本恢复前请先确认数据库兼容性。
 
 ## 技术栈 / Tech Stack
 
@@ -55,6 +59,8 @@ npm run tauri dev
 npm run tauri build
 ```
 
+提交前运行 `npm run build`、`cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` 和 `cargo test --manifest-path src-tauri/Cargo.toml --locked`。PR 会通过 `.github/workflows/verify.yml` 执行同样的检查。
+
 ## 项目结构 / Project Structure
 
 ```
@@ -75,6 +81,7 @@ src-tauri/              # Rust 后端
 │   ├── acme_client/    # ACME 协议客户端
 │   ├── dns_provider/   # DNS API 集成 (Cloudflare, Route53, DNSPod, AliDNS)
 │   ├── metrics/        # 流量指标采集与聚合
+│   ├── recovery.rs     # 加密恢复包与还原
 │   ├── store/          # SQLite 数据层
 │   └── validators.rs   # 输入校验
 └── icons/              # 应用图标

@@ -179,14 +179,19 @@ export interface LogChunk {
   total_lines: number;
 }
 
-export interface ExportData {
-  version: string;
+export interface RecoveryPreview {
   exported_at: string;
-  proxy_rules: ProxyRule[];
-  certificates: Certificate[];
-  access_lists: AccessList[];
-  access_rules: AccessRule[];
-  settings: AppSetting[];
+  proxy_count: number;
+  certificate_count: number;
+  host_count: number;
+  dns_credential_count: number;
+}
+
+export interface ConfigPreview {
+  valid: boolean;
+  test_message: string;
+  conflicts: PortConflict[];
+  changes: Array<{ path: string; before: string | null; after: string | null }>;
 }
 
 // Monitoring metrics
@@ -225,6 +230,12 @@ export interface HostEntry {
   enabled: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface HostsSyncStatus {
+  synced: boolean | null;
+  checked_at: string | null;
+  error: string | null;
 }
 
 export interface CreateHostEntry {

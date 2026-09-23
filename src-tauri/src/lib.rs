@@ -7,6 +7,7 @@ mod error;
 mod hosts_manager;
 mod metrics;
 mod nginx_manager;
+mod recovery;
 mod store;
 mod validators;
 
@@ -519,6 +520,8 @@ pub fn run() {
             commands::proxy::list_proxies,
             commands::proxy::get_proxy,
             commands::proxy::create_proxy,
+            commands::proxy::preview_create_proxy,
+            commands::proxy::preview_update_proxy,
             commands::proxy::update_proxy,
             commands::proxy::delete_proxy,
             commands::proxy::toggle_proxy,
@@ -558,6 +561,7 @@ pub fn run() {
             commands::hosts::toggle_host,
             commands::hosts::check_hostname_exists,
             commands::hosts::sync_hosts_file,
+            commands::hosts::get_hosts_sync_status,
             // Engine commands
             commands::engine::get_engine_status,
             commands::engine::start_engine,
@@ -578,9 +582,9 @@ pub fn run() {
             commands::settings::get_setting,
             commands::settings::set_setting,
             commands::settings::list_settings,
-            commands::settings::export_data,
-            commands::settings::import_data,
-            commands::settings::backup_database,
+            commands::settings::create_recovery_bundle,
+            commands::settings::preview_recovery_bundle,
+            commands::settings::restore_recovery_bundle,
             sync_tray,
             get_platform,
         ])

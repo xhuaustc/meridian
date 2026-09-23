@@ -1,11 +1,13 @@
 import { create } from 'zustand';
-import type { HostEntry } from '../types';
+import type { HostEntry, HostsSyncStatus } from '../types';
 import * as api from '../lib/api';
 
 interface HostsStore {
   entries: HostEntry[];
   loading: boolean;
   error: string | null;
+  syncStatus: HostsSyncStatus | null;
+  refreshSyncStatus: () => Promise<void>;
   fetchEntries: (keyword?: string) => Promise<void>;
   createEntry: (ip: string, hostname: string, comment?: string) => Promise<HostEntry>;
   updateEntry: (id: string, ip?: string, hostname?: string, comment?: string) => Promise<HostEntry>;
@@ -18,6 +20,14 @@ export const useHostsStore = create<HostsStore>((set, get) => ({
   entries: [],
   loading: false,
   error: null,
+  syncStatus: null,
+  refreshSyncStatus: async () => {
+    try {
+      set({ syncStatus: await api.getHostsSyncStatus() });
+    } catch (e) {
+      set({ syncStatus: { synced: null, checked_at: null, error: String(e) } });
+    }
+  },
   fetchEntries: async (keyword?: string) => {
     set({ loading: true, error: null });
     try {
@@ -30,6 +40,7 @@ export const useHostsStore = create<HostsStore>((set, get) => ({
   createEntry: async (ip, hostname, comment) => {
     const entry = await api.createHost({ ip, hostname, comment });
     await get().fetchEntries();
+    await get().refreshSyncStatus();
     return entry;
   },
   updateEntry: async (id, ip, hostname, comment) => {
@@ -37,6 +48,7 @@ export const useHostsStore = create<HostsStore>((set, get) => ({
     set((state) => ({
       entries: state.entries.map((e) => (e.id === id ? entry : e)),
     }));
+    await get().refreshSyncStatus();
     return entry;
   },
   deleteEntry: async (id) => {
@@ -44,15 +56,21 @@ export const useHostsStore = create<HostsStore>((set, get) => ({
     set((state) => ({
       entries: state.entries.filter((e) => e.id !== id),
     }));
+    await get().refreshSyncStatus();
   },
   toggleEntry: async (id, enabled) => {
     const entry = await api.toggleHost(id, enabled);
     set((state) => ({
       entries: state.entries.map((e) => (e.id === id ? entry : e)),
     }));
+    await get().refreshSyncStatus();
     return entry;
   },
   syncToSystem: async () => {
-    await api.syncHostsFile();
+    try {
+      await api.syncHostsFile();
+    } finally {
+      await get().refreshSyncStatus();
+    }
   },
 }));

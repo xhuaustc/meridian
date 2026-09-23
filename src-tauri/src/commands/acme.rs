@@ -5,6 +5,7 @@ use tauri::State;
 use tracing::{error, info};
 
 use crate::acme_client;
+use crate::config_engine;
 use crate::dns_provider;
 use crate::error::AppError;
 use crate::nginx_manager;
@@ -131,20 +132,34 @@ async fn do_acme_background(
     // Do the actual certificate request
     match acme_client::request_certificate(&account, domains, provider.as_ref(), data_dir).await {
         Ok(result) => {
-            let conn = rusqlite::Connection::open(db_path).map_err(|e| AppError::Database(e))?;
-            cert_repo::finish_pending(
-                &conn,
-                cert_id,
-                &result.cert_pem,
-                &result.key_pem,
-                &result.expires_at,
-            )?;
-            info!("ACME certificate {} issued successfully", cert_id);
-
-            // Reload nginx if running
-            if nginx_manager::status(data_dir).status == "running" {
-                let _ = nginx_manager::reload(data_dir);
+            let mut conn = rusqlite::Connection::open(db_path).map_err(AppError::Database)?;
+            let applied = (|| -> Result<(), AppError> {
+                let tx = conn.transaction()?;
+                cert_repo::finish_pending(
+                    &tx,
+                    cert_id,
+                    &result.cert_path,
+                    &result.key_path,
+                    &result.expires_at,
+                )?;
+                config_engine::apply_db_state(&tx, data_dir)?;
+                if let Err(error) = tx.commit() {
+                    let _ = config_engine::apply_db_state(&conn, data_dir);
+                    return Err(AppError::Database(error));
+                }
+                Ok(())
+            })();
+            if let Err(error) = applied {
+                let _ = cert_repo::fail_pending(&conn, cert_id, &error.to_string());
+                for file in [&result.cert_path, &result.key_path] {
+                    let path = std::path::Path::new(file);
+                    if path.parent() == Some(data_dir.join("nginx").join("certs").as_path()) {
+                        let _ = std::fs::remove_file(path);
+                    }
+                }
+                return Err(error);
             }
+            info!("ACME certificate {} issued successfully", cert_id);
         }
         Err(e) => {
             let err_msg = e.to_string();

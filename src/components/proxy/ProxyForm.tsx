@@ -11,10 +11,10 @@ import { useCertStore } from '../../stores/cert-store';
 import { useAccessStore } from '../../stores/access-store';
 import { useToastStore } from '../../stores/toast-store';
 import { useApiError } from '../../hooks/useApiError';
-import { checkPortConflict, checkHostnameExists, createHost } from '../../lib/api';
+import { checkPortConflict, checkHostnameExists, createHost, previewCreateProxy, previewUpdateProxy } from '../../lib/api';
 import { Dialog } from '../ui/Dialog';
 import { cn } from '../../lib/utils';
-import type { ProxyRule, ProxyType, TlsMode, CreateProxyRule, UpdateProxyRule, UpstreamTarget, UpstreamScheme } from '../../types';
+import type { ProxyRule, ProxyType, TlsMode, CreateProxyRule, UpdateProxyRule, UpstreamTarget, UpstreamScheme, ConfigPreview } from '../../types';
 
 type FormProxyType = 'http' | 'https' | 'tcp' | 'udp';
 
@@ -70,6 +70,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
   const [keepAlive, setKeepAlive] = useState(rule?.keep_alive ?? false);
   const [portWarning, setPortWarning] = useState('');
   const [saving, setSaving] = useState(false);
+  const [configPreview, setConfigPreview] = useState<ConfigPreview | null>(null);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [customHeaders, setCustomHeaders] = useState<Array<{key: string, value: string}>>([]);
   const [upstreamTargets, setUpstreamTargets] = useState<UpstreamTarget[]>([]);
@@ -128,6 +129,8 @@ export function ProxyForm({ rule }: ProxyFormProps) {
         isStream ? undefined : domain || undefined,
         isStream ? undefined : pathPrefix || undefined,
         isEdit ? rule?.id : undefined,
+        tlsMode,
+        tlsMode === 'terminate' ? certificateId || undefined : undefined,
       );
       if (conflicts.length > 0) {
         setPortWarning(conflicts.map((c) => c.message).join('; '));
@@ -137,7 +140,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
     } catch {
       setPortWarning('');
     }
-  }, [listenPort, formType, domain, pathPrefix, isEdit, isStream, rule?.id]);
+  }, [listenPort, formType, domain, pathPrefix, isEdit, isStream, rule?.id, tlsMode, certificateId]);
 
   const clearError = (field: string) => {
     setErrors((prev) => {
@@ -146,6 +149,50 @@ export function ProxyForm({ rule }: ProxyFormProps) {
       delete next[field];
       return next;
     });
+  };
+
+  const buildInput = (): CreateProxyRule => {
+    const { proxy_type } = fromFormType(formType);
+    const headersObj: Record<string, string> = {};
+    for (const header of customHeaders) {
+      if (header.key.trim()) headersObj[header.key.trim()] = header.value;
+    }
+    const validTargets = multiUpstream
+      ? upstreamTargets.filter((target) => target.host.trim() && target.port > 0)
+      : [];
+    return {
+      name,
+      proxy_type,
+      listen_port: parseInt(listenPort),
+      listen_host: '0.0.0.0',
+      domain: isStream ? null : domain || null,
+      path_prefix: isStream ? null : pathPrefix || null,
+      upstream_host: upstreamHost,
+      upstream_port: parseInt(upstreamPort),
+      upstream_scheme: upstreamScheme,
+      tls_mode: tlsMode,
+      certificate_id: tlsMode === 'terminate' ? certificateId || null : null,
+      access_list_id: accessListId || null,
+      websocket: showWebsocket ? websocket : false,
+      keep_alive: keepAlive,
+      custom_headers: Object.keys(headersObj).length > 0 ? JSON.stringify(headersObj) : null,
+      upstream_targets: validTargets.length > 0 ? JSON.stringify(validTargets) : null,
+    };
+  };
+
+  const handlePreview = async () => {
+    setSaving(true);
+    try {
+      const input = buildInput();
+      const preview = isEdit && rule
+        ? await previewUpdateProxy(rule.id, input as UpdateProxyRule)
+        : await previewCreateProxy(input);
+      setConfigPreview(preview);
+    } catch (e) {
+      addToast('error', formatError(e));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSave = async () => {
@@ -168,6 +215,8 @@ export function ProxyForm({ rule }: ProxyFormProps) {
           isStream ? undefined : domain || undefined,
           isStream ? undefined : pathPrefix || undefined,
           isEdit ? rule?.id : undefined,
+          tlsMode,
+          tlsMode === 'terminate' ? certificateId || undefined : undefined,
         );
         if (conflicts.length > 0) {
           errs.listenPort = true;
@@ -189,62 +238,11 @@ export function ProxyForm({ rule }: ProxyFormProps) {
 
     setSaving(true);
     try {
-      const { proxy_type } = fromFormType(formType);
-
-      const headersObj: Record<string, string> = {};
-      for (const h of customHeaders) {
-        if (h.key.trim()) {
-          headersObj[h.key.trim()] = h.value;
-        }
-      }
-      const custom_headers = Object.keys(headersObj).length > 0 ? JSON.stringify(headersObj) : null;
-
-      // Serialize upstream targets
-      const validTargets = multiUpstream
-        ? upstreamTargets.filter((t) => t.host.trim() && t.port > 0)
-        : [];
-      const upstream_targets = validTargets.length > 0 ? JSON.stringify(validTargets) : null;
-
+      const input = buildInput();
       if (isEdit && rule) {
-        const input: UpdateProxyRule = {
-          name,
-          proxy_type,
-          listen_port: parseInt(listenPort),
-          listen_host: '0.0.0.0',
-          domain: isStream ? null : domain || null,
-          path_prefix: isStream ? null : pathPrefix || null,
-          upstream_host: upstreamHost,
-          upstream_port: parseInt(upstreamPort),
-          upstream_scheme: upstreamScheme,
-          tls_mode: tlsMode,
-          certificate_id: tlsMode === 'terminate' ? certificateId || null : null,
-          access_list_id: accessListId || null,
-          websocket: showWebsocket ? websocket : false,
-          keep_alive: keepAlive,
-          custom_headers,
-          upstream_targets,
-        };
-        await updateProxy(rule.id, input);
+        await updateProxy(rule.id, input as UpdateProxyRule);
         addToast('success', t('proxyForm.updateSuccess'));
       } else {
-        const input: CreateProxyRule = {
-          name,
-          proxy_type,
-          listen_port: parseInt(listenPort),
-          listen_host: '0.0.0.0',
-          domain: isStream ? null : domain || null,
-          path_prefix: isStream ? null : pathPrefix || null,
-          upstream_host: upstreamHost,
-          upstream_port: parseInt(upstreamPort),
-          upstream_scheme: upstreamScheme,
-          tls_mode: tlsMode,
-          certificate_id: tlsMode === 'terminate' ? certificateId || null : null,
-          access_list_id: accessListId || null,
-          websocket: showWebsocket ? websocket : false,
-          keep_alive: keepAlive,
-          custom_headers,
-          upstream_targets,
-        };
         await createProxy(input);
         addToast('success', t('proxyForm.createSuccess'));
 
@@ -712,10 +710,33 @@ export function ProxyForm({ rule }: ProxyFormProps) {
         <Button variant="default" onClick={() => navigate('/')}>
           {t('proxyForm.cancel')}
         </Button>
+        <Button variant="default" onClick={handlePreview} disabled={saving}>
+          {t('proxyForm.previewConfig')}
+        </Button>
         <Button variant="primary" onClick={handleSave} disabled={saving}>
           {t('proxyForm.save')}
         </Button>
       </div>
+      <Dialog open={!!configPreview} onClose={() => setConfigPreview(null)} title={t('proxyForm.previewConfig')}>
+        {configPreview && (
+          <div className="max-h-[60vh] overflow-y-auto text-[12px] space-y-3">
+            <p className={configPreview.valid ? 'text-success' : 'text-error'}>
+              {configPreview.valid ? t('proxyForm.previewValid') : t('proxyForm.previewInvalid')}
+            </p>
+            {configPreview.test_message && <pre className="whitespace-pre-wrap break-all">{configPreview.test_message}</pre>}
+            <p>{t('proxyForm.previewChanges', { count: configPreview.changes.length })}</p>
+            {configPreview.changes.map((change) => (
+              <details key={change.path} className="border border-border rounded p-2">
+                <summary className="cursor-pointer font-medium">{change.path}</summary>
+                <div className="mt-2">{t('proxyForm.previewBefore')}</div>
+                <pre className="whitespace-pre-wrap break-all bg-bg-primary p-2">{change.before ?? '—'}</pre>
+                <div className="mt-2">{t('proxyForm.previewAfter')}</div>
+                <pre className="whitespace-pre-wrap break-all bg-bg-primary p-2">{change.after ?? '—'}</pre>
+              </details>
+            ))}
+          </div>
+        )}
+      </Dialog>
       {/* Hosts entry prompt after proxy creation */}
       <Dialog
         open={showHostsPrompt}

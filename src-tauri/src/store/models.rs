@@ -227,14 +227,3 @@ pub struct CreateHostEntry {
     pub hostname: String,
     pub comment: Option<String>,
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExportData {
-    pub version: String,
-    pub exported_at: String,
-    pub proxy_rules: Vec<ProxyRule>,
-    pub certificates: Vec<Certificate>,
-    pub access_lists: Vec<AccessList>,
-    pub access_rules: Vec<AccessRule>,
-    pub settings: Vec<AppSetting>,
-}

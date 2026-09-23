@@ -4,9 +4,11 @@ pub mod http_config;
 pub mod main_config;
 pub mod stream_config;
 
+use serde::Serialize;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// Convert a path to a string with forward slashes.
@@ -29,20 +31,203 @@ pub fn nginx_path_str(s: &str) -> Cow<'_, str> {
     }
 }
 
+fn write_config(path: &Path, content: &str) -> Result<(), AppError> {
+    let mut options = OpenOptions::new();
+    options.write(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    file.set_len(0)?;
+    file.write_all(content.as_bytes())?;
+    Ok(())
+}
+
 use tracing::{info, warn};
 
 use crate::error::AppError;
 use crate::store::models::{AccessList, AccessRule, Certificate, PortConflict, ProxyRule};
+use crate::store::{access_repo, cert_repo, proxy_repo, settings_repo};
 
-/// Orchestrate full nginx config generation from all enabled rules.
-/// Writes config files to disk and returns any conflicts detected.
-pub fn generate_all_configs(
+pub struct ConfigData {
+    pub rules: Vec<ProxyRule>,
+    pub certs: Vec<Certificate>,
+    pub access_lists: Vec<(AccessList, Vec<AccessRule>)>,
+    pub worker_processes: String,
+}
+
+#[derive(Serialize)]
+pub struct ConfigChange {
+    pub path: String,
+    pub before: Option<String>,
+    pub after: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct ConfigPreview {
+    pub valid: bool,
+    pub test_message: String,
+    pub conflicts: Vec<PortConflict>,
+    pub changes: Vec<ConfigChange>,
+}
+
+fn generated_files(data_dir: &Path) -> Result<HashMap<String, String>, AppError> {
+    let mut files = HashMap::new();
+    let nginx_dir = data_dir.join("nginx");
+    for relative_dir in ["", "conf.d", "stream.d"] {
+        let dir = nginx_dir.join(relative_dir);
+        if !dir.exists() {
+            continue;
+        }
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_file() || path.extension().is_none_or(|ext| ext != "conf") {
+                continue;
+            }
+            let relative = path
+                .strip_prefix(&nginx_dir)
+                .map_err(|e| AppError::Config(e.to_string()))?;
+            files.insert(
+                relative.to_string_lossy().replace('\\', "/"),
+                fs::read_to_string(path)?,
+            );
+        }
+    }
+    Ok(files)
+}
+
+fn cleanup_preview_dir(dir: &Path) {
+    for relative in [
+        "nginx/conf.d",
+        "nginx/stream.d",
+        "nginx/html",
+        "nginx/logs",
+        "nginx/temp/client_body",
+        "nginx/temp/proxy",
+        "nginx/temp",
+        "nginx",
+    ] {
+        let path = dir.join(relative);
+        if let Ok(entries) = fs::read_dir(&path) {
+            for entry in entries.flatten() {
+                if entry.path().is_file() {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+        }
+        let _ = fs::remove_dir(path);
+    }
+    let _ = fs::remove_dir(dir);
+}
+
+pub fn preview_db_state(
+    db: &rusqlite::Connection,
     data_dir: &Path,
-    rules: &[ProxyRule],
-    certs: &[Certificate],
-    access_lists: &[(AccessList, Vec<AccessRule>)],
+) -> Result<ConfigPreview, AppError> {
+    let data = load_config_data(db)?;
+    let staged = data_dir.join(format!("nginx_preview_{}", uuid::Uuid::new_v4()));
+    let result = (|| -> Result<ConfigPreview, AppError> {
+        let conflicts = generate_all_configs_with_settings(
+            &staged,
+            &data.rules,
+            &data.certs,
+            &data.access_lists,
+            &data.worker_processes,
+        )?;
+        let staged_files = generated_files(&staged)?;
+        let live_files = generated_files(data_dir)?;
+        let staged_prefix = nginx_path(&staged).into_owned();
+        let live_prefix = nginx_path(data_dir).into_owned();
+        let mut names: Vec<String> = staged_files
+            .keys()
+            .chain(live_files.keys())
+            .cloned()
+            .collect();
+        names.sort();
+        names.dedup();
+        let changes = names
+            .into_iter()
+            .filter_map(|path| {
+                let before = live_files.get(&path).cloned();
+                let after = staged_files
+                    .get(&path)
+                    .map(|s| s.replace(&staged_prefix, &live_prefix));
+                if before == after {
+                    None
+                } else {
+                    Some(ConfigChange {
+                        path,
+                        before,
+                        after,
+                    })
+                }
+            })
+            .collect();
+        let (valid, test_message) = if conflicts.is_empty() {
+            match crate::nginx_manager::test_config(&staged) {
+                Ok(result) => result,
+                Err(error) => (false, error.to_string()),
+            }
+        } else {
+            (
+                false,
+                conflicts
+                    .iter()
+                    .map(|c| c.message.as_str())
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            )
+        };
+        Ok(ConfigPreview {
+            valid,
+            test_message,
+            conflicts,
+            changes,
+        })
+    })();
+    cleanup_preview_dir(&staged);
+    result
+}
+
+pub fn load_config_data(db: &rusqlite::Connection) -> Result<ConfigData, AppError> {
+    let rules = proxy_repo::list_enabled(db)?;
+    let certs = cert_repo::list_all(db)?;
+    let lists = access_repo::list_all_lists(db)?;
+    let mut access_lists = Vec::with_capacity(lists.len());
+    for list in lists {
+        let rules = access_repo::list_rules_by_list(db, &list.id)?;
+        access_lists.push((list, rules));
+    }
+    let worker_processes =
+        settings_repo::get(db, "worker_processes")?.unwrap_or_else(|| "2".to_string());
+    Ok(ConfigData {
+        rules,
+        certs,
+        access_lists,
+        worker_processes,
+    })
+}
+
+pub fn apply_db_state(
+    db: &rusqlite::Connection,
+    data_dir: &Path,
 ) -> Result<Vec<PortConflict>, AppError> {
-    generate_all_configs_with_settings(data_dir, rules, certs, access_lists, "2")
+    let data = load_config_data(db)?;
+    apply_and_reload(
+        data_dir,
+        &data.rules,
+        &data.certs,
+        &data.access_lists,
+        &data.worker_processes,
+    )
 }
 
 /// Generate all configs with explicit settings.
@@ -63,6 +248,7 @@ pub fn generate_all_configs_with_settings(
     fs::create_dir_all(&conf_d)?;
     fs::create_dir_all(&stream_d)?;
     fs::create_dir_all(&logs_dir)?;
+    fs::create_dir_all(nginx_dir.join("temp"))?;
 
     // Write custom error pages
     error_pages::write_error_pages(data_dir)?;
@@ -72,7 +258,7 @@ pub fn generate_all_configs_with_settings(
 
     // Write main nginx.conf
     let main_conf = main_config::generate_main_config(data_dir, worker_processes);
-    fs::write(nginx_dir.join("nginx.conf"), main_conf)?;
+    write_config(&nginx_dir.join("nginx.conf"), &main_conf)?;
     info!("Wrote nginx.conf");
 
     // Clear existing generated configs
@@ -105,7 +291,7 @@ pub fn generate_all_configs_with_settings(
             domain.replace('.', "_").replace('*', "wildcard")
         };
         let filename = format!("{}_{}.conf", port, sanitized_domain);
-        fs::write(conf_d.join(&filename), config)?;
+        write_config(&conf_d.join(&filename), &config)?;
         info!("Wrote HTTP config: {}", filename);
     }
 
@@ -113,7 +299,7 @@ pub fn generate_all_configs_with_settings(
     for rule in &stream_rules {
         let config = stream_config::generate_stream_block(rule, certs, data_dir);
         let filename = format!("stream_{}_{}.conf", rule.listen_port, rule.proxy_type);
-        fs::write(stream_d.join(&filename), config)?;
+        write_config(&stream_d.join(&filename), &config)?;
         info!("Wrote stream config: {}", filename);
     }
 
@@ -236,12 +422,19 @@ pub fn apply_and_reload(
     rules: &[ProxyRule],
     certs: &[Certificate],
     access_lists: &[(AccessList, Vec<AccessRule>)],
+    worker_processes: &str,
 ) -> Result<Vec<PortConflict>, AppError> {
     // Step 1: backup existing configs
     let backup_dir = backup_configs(data_dir)?;
 
     // Step 2: generate new configs
-    let conflicts = match generate_all_configs(data_dir, rules, certs, access_lists) {
+    let conflicts = match generate_all_configs_with_settings(
+        data_dir,
+        rules,
+        certs,
+        access_lists,
+        worker_processes,
+    ) {
         Ok(c) => c,
         Err(e) => {
             warn!("Config generation failed, restoring backup: {}", e);
@@ -285,11 +478,63 @@ pub fn apply_and_reload(
             )))
         }
         Err(e) => {
-            // nginx binary not found or other issue - still keep new configs
-            // but don't fail the operation since configs might still be valid
-            warn!("Could not test config (nginx not available): {}", e);
-            let _ = cleanup_backup_dir(&backup_dir);
-            Ok(conflicts)
+            warn!("Could not test config, restoring backup: {}", e);
+            let _ = restore_configs(&backup_dir, data_dir);
+            Err(e)
         }
+    }
+}
+
+#[cfg(test)]
+mod preview_tests {
+    use super::*;
+
+    #[test]
+    fn generated_config_is_private_on_unix() {
+        let path =
+            std::env::temp_dir().join(format!("meridian-config-mode-{}", uuid::Uuid::new_v4()));
+        write_config(&path, "worker_processes 2;").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn preview_leaves_live_configuration_unchanged() {
+        let data_dir =
+            std::env::temp_dir().join(format!("meridian-preview-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&data_dir).unwrap();
+        let db_path = data_dir.join("meridian.db");
+        let db = crate::store::init_database(&db_path).unwrap();
+        let preview = preview_db_state(&db, &data_dir).unwrap();
+        assert!(preview
+            .changes
+            .iter()
+            .any(|change| change.path == "nginx.conf"));
+        if std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join(if cfg!(windows) { "nginx.exe" } else { "nginx" })
+            .exists()
+        {
+            assert!(preview.valid, "{}", preview.test_message);
+        }
+        assert!(!data_dir.join("nginx/nginx.conf").exists());
+        assert!(
+            !fs::read_dir(&data_dir).unwrap().flatten().any(|entry| entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("nginx_preview_"))
+        );
+        drop(db);
+        let _ = fs::remove_file(&db_path);
+        let _ = fs::remove_dir(&data_dir);
     }
 }

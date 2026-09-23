@@ -144,15 +144,6 @@ pub fn delete_rule(conn: &Connection, id: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-pub fn list_all_rules(conn: &Connection) -> Result<Vec<AccessRule>, AppError> {
-    let mut stmt =
-        conn.prepare("SELECT * FROM access_rules ORDER BY access_list_id, sort_order ASC")?;
-    let rules = stmt
-        .query_map([], |row| row_to_access_rule(row))?
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(rules)
-}
-
 /// Check if an access list with the given name already exists (case-insensitive).
 pub fn find_by_name_ci(conn: &Connection, name: &str) -> Result<Option<AccessList>, AppError> {
     let mut stmt = conn.prepare("SELECT * FROM access_lists WHERE LOWER(name) = LOWER(?1)")?;

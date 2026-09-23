@@ -446,6 +446,8 @@ pub fn test_config(data_dir: &Path) -> Result<(bool, String), AppError> {
         .arg("-t")
         .arg("-c")
         .arg(&conf)
+        .arg("-p")
+        .arg(prefix_path(data_dir))
         .output()
         .map_err(|e| AppError::Nginx(format!("Failed to test nginx config: {}", e)))?;
 

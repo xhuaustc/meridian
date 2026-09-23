@@ -21,9 +21,9 @@
 
 ## Build Results
 
-- **Rust backend**: 30 Tauri IPC commands, clean compilation (0 warnings)
-- **React frontend**: 6 pages, 7 UI components, 6 Zustand stores, complete i18n (zh/en)
-- **Vite build**: ✅ success (375KB JS + 26KB CSS)
+- **Rust backend**: Tauri IPC commands with unit tests; see current CI for fresh results
+- **React frontend**: React 19 with Chinese and English locales
+- **Vite build**: see current CI for bundle size and fresh results
 - **Tauri build**: ✅ .app bundle + binary (16MB)
 - **Gate 4 review**: 3 Critical + 14 Major issues found → ALL FIXED
 
@@ -64,15 +64,18 @@
 
 ## Codebase Context
 
-- **Tech Stack:** Tauri v2 + React 18 + TypeScript + Tailwind CSS 4 + Rust + SQLite
+- **Tech Stack:** Tauri v2 + React 19 + TypeScript + Tailwind CSS 4 + Rust + SQLite
 - **Source files:** ~25 Rust modules + ~30 TypeScript files
 - **App Icon:** Custom SVG → PNG/ICO/ICNS (blue gradient + stream lines)
 - **System Tray:** Full menu with engine control, i18n, state sync
 - **Charting:** recharts (AreaChart, LineChart, PieChart) for monitoring
 - **Monitoring:** On-demand nginx JSON log parsing, no persistent metrics DB
 
-## Active Changes
+## Recent Maintenance
 
-(None)
+- Encrypted recovery bundles replace incomplete JSON import/export; restoration previews counts and keeps a database backup.
+- Proxy form can preview generated Nginx config and syntax-test results before saving.
+- ACME renewal updates certificate paths before applying config; hosts sync status is visible in the UI.
+- Pull requests run frontend build, Rust formatting, and Rust tests through `.github/workflows/verify.yml`.
 
-## Last Updated: 2026-04-04
+## Last Updated: 2026-09-23

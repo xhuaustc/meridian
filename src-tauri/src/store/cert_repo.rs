@@ -102,6 +102,27 @@ pub fn update_cert_after_renewal(
     Ok(())
 }
 
+pub fn finish_renewal(
+    conn: &Connection,
+    id: &str,
+    cert_path: &str,
+    key_path: &str,
+    expires_at: &str,
+) -> Result<(), AppError> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let changed = conn.execute(
+        "UPDATE certificates SET cert_path = ?1, key_path = ?2, expires_at = ?3, last_renew_at = ?4, last_renew_error = NULL WHERE id = ?5",
+        params![cert_path, key_path, expires_at, now, id],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!(
+            "Certificate '{}' no longer exists",
+            id
+        )));
+    }
+    Ok(())
+}
+
 pub fn list_acme_auto_renew(conn: &Connection) -> Result<Vec<Certificate>, AppError> {
     let mut stmt = conn.prepare(
         "SELECT * FROM certificates WHERE source = 'acme' AND auto_renew = 1 ORDER BY expires_at ASC",
@@ -153,11 +174,52 @@ pub fn finish_pending(
     key_path: &str,
     expires_at: &str,
 ) -> Result<(), AppError> {
-    conn.execute(
-        "UPDATE certificates SET cert_path = ?1, key_path = ?2, expires_at = ?3, status = 'ready' WHERE id = ?4",
+    let changed = conn.execute(
+        "UPDATE certificates SET cert_path = ?1, key_path = ?2, expires_at = ?3, status = 'ready' WHERE id = ?4 AND status = 'pending'",
         params![cert_path, key_path, expires_at, id],
     )?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!(
+            "Pending certificate '{}' no longer exists",
+            id
+        )));
+    }
     Ok(())
+}
+
+#[cfg(test)]
+mod renewal_tests {
+    use super::*;
+
+    #[test]
+    fn renewal_updates_certificate_paths_and_expiry_together() {
+        let path =
+            std::env::temp_dir().join(format!("meridian-cert-renew-{}.db", uuid::Uuid::new_v4()));
+        let db = crate::store::init_database(&path).unwrap();
+        let cert = create(
+            &db,
+            &CreateCertificate {
+                name: "test".into(),
+                domain: "example.test".into(),
+                cert_path: "old.cert".into(),
+                key_path: "old.key".into(),
+                source: "acme".into(),
+                expires_at: "2026-01-01T00:00:00Z".into(),
+                auto_renew: Some(true),
+                dns_credential_id: None,
+                acme_account_id: None,
+                acme_domains: None,
+            },
+        )
+        .unwrap();
+        finish_renewal(&db, &cert.id, "new.cert", "new.key", "2027-01-01T00:00:00Z").unwrap();
+        let renewed = get_by_id(&db, &cert.id).unwrap();
+        assert_eq!(renewed.cert_path, "new.cert");
+        assert_eq!(renewed.key_path, "new.key");
+        assert_eq!(renewed.expires_at, "2027-01-01T00:00:00Z");
+        drop(db);
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 /// Mark a pending cert as failed.

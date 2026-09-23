@@ -60,6 +60,22 @@ pub fn detect_conflicts(rules: &[ProxyRule]) -> Vec<PortConflict> {
                 continue;
             }
 
+            // One virtual server cannot have different TLS modes or certificates per path.
+            if a.tls_mode != b.tls_mode
+                || (a.tls_mode == "terminate" && a.certificate_id != b.certificate_id)
+            {
+                conflicts.push(PortConflict {
+                    rule_id: b.id.clone(),
+                    rule_name: b.name.clone(),
+                    conflict_type: "http_tls_conflict".to_string(),
+                    message: format!(
+                        "Port {}, domain '{}' has incompatible TLS settings between '{}' and '{}'",
+                        a.listen_port, a_domain, a.name, b.name
+                    ),
+                });
+                continue;
+            }
+
             let a_path = a.path_prefix.as_deref().unwrap_or("/");
             let b_path = b.path_prefix.as_deref().unwrap_or("/");
 
@@ -159,6 +175,18 @@ mod tests {
             make_rule("2", "http", 80, Some("a.com"), Some("/web")),
         ];
         assert!(detect_conflicts(&rules).is_empty());
+    }
+
+    #[test]
+    fn test_same_virtual_server_rejects_mixed_tls() {
+        let a = make_rule("1", "http", 443, Some("a.com"), Some("/private"));
+        let mut b = make_rule("2", "http", 443, Some("a.com"), Some("/public"));
+        b.tls_mode = "terminate".to_string();
+        b.certificate_id = Some("cert-1".to_string());
+        assert_eq!(
+            detect_conflicts(&[a, b])[0].conflict_type,
+            "http_tls_conflict"
+        );
     }
 
     #[test]

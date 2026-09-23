@@ -6,7 +6,7 @@ use crate::store::access_repo;
 use crate::store::models::{
     AccessList, AccessListDetail, AccessRule, CreateAccessList, CreateAccessRule,
 };
-use crate::store::{cert_repo, proxy_repo};
+use crate::store::proxy_repo;
 use crate::validators;
 use crate::AppState;
 
@@ -77,12 +77,10 @@ pub async fn update_access_list(
         validators::validate_create_access_list(n)?;
     }
 
-    let result = {
-        let db = state.get_conn()?;
-
+    change_and_reload(&state, |db| {
         // Check name uniqueness if changing name
         if let Some(ref n) = name {
-            if let Some(existing) = access_repo::find_by_name_ci(&db, n)? {
+            if let Some(existing) = access_repo::find_by_name_ci(db, n)? {
                 if existing.id != id {
                     return Err(AppError::Validation(format!(
                         "Access list with name '{}' already exists (id: {})",
@@ -92,13 +90,8 @@ pub async fn update_access_list(
             }
         }
 
-        access_repo::update_list(&db, &id, name.as_deref(), default_policy.as_deref())?
-    };
-
-    // Cascade reload
-    apply_and_reload_inner(&state)?;
-
-    Ok(result)
+        access_repo::update_list(db, &id, name.as_deref(), default_policy.as_deref())
+    })
 }
 
 #[tauri::command]
@@ -124,12 +117,10 @@ pub async fn create_access_rule(
 ) -> Result<AccessRule, AppError> {
     validators::validate_ip_cidr(&input.ip_cidr)?;
 
-    let rule = {
-        let db = state.get_conn()?;
-
+    change_and_reload(&state, |db| {
         // Check for duplicate rule
         if let Some(_existing) = access_repo::find_duplicate_rule(
-            &db,
+            db,
             &input.access_list_id,
             &input.action,
             &input.ip_cidr,
@@ -140,26 +131,13 @@ pub async fn create_access_rule(
             )));
         }
 
-        access_repo::create_rule(&db, &input)?
-    };
-
-    // Cascade reload
-    apply_and_reload_inner(&state)?;
-
-    Ok(rule)
+        access_repo::create_rule(db, &input)
+    })
 }
 
 #[tauri::command]
 pub async fn delete_access_rule(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    {
-        let db = state.get_conn()?;
-        access_repo::delete_rule(&db, &id)?;
-    }
-
-    // Cascade reload
-    apply_and_reload_inner(&state)?;
-
-    Ok(())
+    change_and_reload(&state, |db| access_repo::delete_rule(db, &id))
 }
 
 #[tauri::command]
@@ -168,31 +146,22 @@ pub async fn reorder_access_rules(
     rule_ids: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    {
-        let db = state.get_conn()?;
-        access_repo::reorder_rules(&db, &access_list_id, &rule_ids)?;
-    }
-
-    // Cascade reload
-    apply_and_reload_inner(&state)?;
-
-    Ok(())
+    change_and_reload(&state, |db| {
+        access_repo::reorder_rules(db, &access_list_id, &rule_ids)
+    })
 }
 
-/// Helper: read all data from DB, generate configs, test, and reload.
-fn apply_and_reload_inner(state: &AppState) -> Result<(), AppError> {
-    let db = state.get_conn()?;
-    let rules = proxy_repo::list_enabled(&db)?;
-    let certs = cert_repo::list_all(&db)?;
-    let access_lists_raw = access_repo::list_all_lists(&db)?;
-
-    let mut access_lists = Vec::new();
-    for al in &access_lists_raw {
-        let al_rules = access_repo::list_rules_by_list(&db, &al.id)?;
-        access_lists.push((al.clone(), al_rules));
+fn change_and_reload<T, F>(state: &AppState, change: F) -> Result<T, AppError>
+where
+    F: FnOnce(&rusqlite::Connection) -> Result<T, AppError>,
+{
+    let mut db = state.get_conn()?;
+    let tx = db.transaction()?;
+    let result = change(&tx)?;
+    config_engine::apply_db_state(&tx, &state.data_dir)?;
+    if let Err(error) = tx.commit() {
+        let _ = config_engine::apply_db_state(&db, &state.data_dir);
+        return Err(AppError::Database(error));
     }
-    drop(db);
-
-    config_engine::apply_and_reload(&state.data_dir, &rules, &certs, &access_lists)?;
-    Ok(())
+    Ok(result)
 }

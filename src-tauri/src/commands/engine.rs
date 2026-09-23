@@ -4,7 +4,7 @@ use crate::config_engine;
 use crate::error::AppError;
 use crate::nginx_manager;
 use crate::store::models::{NginxStatus, PortConflict, ProxyRule};
-use crate::store::{access_repo, cert_repo, proxy_repo, settings_repo};
+use crate::store::proxy_repo;
 use crate::AppState;
 
 #[tauri::command]
@@ -26,17 +26,14 @@ pub async fn stop_engine(state: State<'_, AppState>) -> Result<(), AppError> {
 
 #[tauri::command]
 pub async fn reload_engine(state: State<'_, AppState>) -> Result<Vec<PortConflict>, AppError> {
-    let conflicts = apply_config_inner(&state)?;
-    nginx_manager::reload(&state.data_dir)?;
-    Ok(conflicts)
+    apply_config_inner(&state)
 }
 
 #[tauri::command]
 pub async fn restart_engine(state: State<'_, AppState>) -> Result<(), AppError> {
-    // Stop nginx (ignore error if not running)
-    let _ = nginx_manager::stop(&state.data_dir);
-    // Regenerate configs
+    // Validate and apply before stopping the currently running process.
     apply_config_inner(&state)?;
+    let _ = nginx_manager::stop(&state.data_dir);
     // Start nginx
     nginx_manager::start(&state.data_dir)
 }
@@ -66,6 +63,8 @@ pub async fn check_port_conflict(
     domain: Option<String>,
     path_prefix: Option<String>,
     exclude_id: Option<String>,
+    tls_mode: Option<String>,
+    certificate_id: Option<String>,
 ) -> Result<Vec<PortConflict>, AppError> {
     let db = state.get_conn()?;
     let mut rules = proxy_repo::list_enabled(&db)?;
@@ -89,8 +88,8 @@ pub async fn check_port_conflict(
         upstream_host: "127.0.0.1".to_string(),
         upstream_port: 80,
         upstream_scheme: "http".to_string(),
-        tls_mode: "none".to_string(),
-        certificate_id: None,
+        tls_mode: tls_mode.unwrap_or_else(|| "none".to_string()),
+        certificate_id,
         access_list_id: None,
         websocket: false,
         keep_alive: false,
@@ -116,25 +115,5 @@ pub async fn check_port_conflict(
 
 fn apply_config_inner(state: &AppState) -> Result<Vec<PortConflict>, AppError> {
     let db = state.get_conn()?;
-    let rules = proxy_repo::list_enabled(&db)?;
-    let certs = cert_repo::list_all(&db)?;
-    let access_lists_raw = access_repo::list_all_lists(&db)?;
-    let worker_processes =
-        settings_repo::get(&db, "worker_processes")?.unwrap_or_else(|| "2".to_string());
-
-    let mut access_lists = Vec::new();
-    for al in &access_lists_raw {
-        let rules = access_repo::list_rules_by_list(&db, &al.id)?;
-        access_lists.push((al.clone(), rules));
-    }
-
-    drop(db); // Release the lock before file I/O
-
-    config_engine::generate_all_configs_with_settings(
-        &state.data_dir,
-        &rules,
-        &certs,
-        &access_lists,
-        &worker_processes,
-    )
+    config_engine::apply_db_state(&db, &state.data_dir)
 }

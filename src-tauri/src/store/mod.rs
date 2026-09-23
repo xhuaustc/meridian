@@ -211,16 +211,89 @@ fn run_migrations(conn: &Connection) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Create a backup of the database file.
+/// Create a consistent snapshot, including committed changes still in the WAL.
 pub fn backup_database(db_path: &Path) -> Result<String, AppError> {
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
     let backup_name = format!(
-        "{}.backup_{}.db",
+        "{}.backup_{}_{}.db",
         db_path.file_stem().unwrap_or_default().to_string_lossy(),
-        timestamp
+        timestamp,
+        uuid::Uuid::new_v4()
     );
     let backup_path = db_path.with_file_name(&backup_name);
-    std::fs::copy(db_path, &backup_path)?;
+    let source = Connection::open(db_path)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    drop(options.open(&backup_path)?);
+    let backup_path_str = backup_path.to_string_lossy();
+    if let Err(error) = source.execute("VACUUM INTO ?1", [backup_path_str.as_ref()]) {
+        let _ = std::fs::remove_file(&backup_path);
+        return Err(AppError::Database(error));
+    }
+
+    let verify = (|| -> Result<(), AppError> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&backup_path, std::fs::Permissions::from_mode(0o600))?;
+        }
+        let backup = Connection::open(&backup_path)?;
+        let integrity: String = backup.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+        if integrity != "ok" {
+            return Err(AppError::Database(rusqlite::Error::InvalidQuery));
+        }
+        Ok(())
+    })();
+    if let Err(error) = verify {
+        let _ = std::fs::remove_file(&backup_path);
+        return Err(error);
+    }
     info!("Database backed up to {:?}", backup_path);
     Ok(backup_path.to_string_lossy().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backup_includes_uncheckpointed_wal_changes() {
+        let db_path =
+            std::env::temp_dir().join(format!("meridian-backup-test-{}.db", uuid::Uuid::new_v4()));
+        let source = Connection::open(&db_path).unwrap();
+        source.execute_batch("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE sample(value TEXT); INSERT INTO sample VALUES ('recent');").unwrap();
+        let backup_path = backup_database(&db_path).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&backup_path)
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
+        let backup = Connection::open(&backup_path).unwrap();
+        let value: String = backup
+            .query_row("SELECT value FROM sample", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(value, "recent");
+        drop(backup);
+        drop(source);
+        for path in [
+            backup_path.into(),
+            db_path.clone(),
+            db_path.with_extension("db-wal"),
+            db_path.with_extension("db-shm"),
+        ] {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 }
