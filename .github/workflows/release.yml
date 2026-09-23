@@ -87,6 +87,13 @@ jobs:
         with:
           targets: ${{ matrix.rust-target }}
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Configure Rust compiler cache
+        shell: bash
+        run: echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
@@ -111,21 +118,33 @@ jobs:
 
       # --- Prepare nginx sidecar ---
 
+      - name: Restore nginx sidecar cache
+        if: github.event_name == 'workflow_dispatch'
+        id: nginx-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .nginx-build
+            src-tauri/binaries/nginx-${{ matrix.rust-target }}
+            src-tauri/binaries/nginx-${{ matrix.rust-target }}.exe
+          key: nginx-${{ runner.os }}-${{ matrix.rust-target }}-${{ env.NGINX_VERSION }}-${{ env.OPENSSL_VERSION }}-${{ env.ZLIB_VERSION }}-${{ hashFiles('scripts/prepare-nginx.sh', 'scripts/prepare-nginx.ps1') }}
+
       # macOS / Linux: compile nginx from source
       - name: Build nginx sidecar (Unix)
-        if: runner.os != 'Windows'
+        if: github.event_name == 'workflow_dispatch' && runner.os != 'Windows' && steps.nginx-cache.outputs.cache-hit != 'true'
         run: |
           chmod +x ./scripts/prepare-nginx.sh
-          FORCE_REBUILD=1 ./scripts/prepare-nginx.sh ${{ matrix.rust-target }}
+          ./scripts/prepare-nginx.sh ${{ matrix.rust-target }}
 
       # Windows: download official pre-built binary
       - name: Build nginx sidecar (Windows)
-        if: runner.os == 'Windows'
+        if: github.event_name == 'workflow_dispatch' && runner.os == 'Windows' && steps.nginx-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          .\scripts\prepare-nginx.ps1 -NginxVersion $env:NGINX_VERSION -Target ${{ matrix.rust-target }} -ForceRebuild
+          .\scripts\prepare-nginx.ps1 -NginxVersion $env:NGINX_VERSION -Target ${{ matrix.rust-target }}
 
       - name: Verify nginx sidecar
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
@@ -135,15 +154,19 @@ jobs:
           fi
 
       - name: Remove macOS sidecar ad-hoc signature
-        if: runner.os == 'macOS'
+        if: github.event_name == 'workflow_dispatch' && runner.os == 'macOS'
         run: |
           codesign --remove-signature src-tauri/binaries/nginx-${{ matrix.rust-target }} || true
 
       # --- Build Tauri app ---
 
+      - name: Compile Tauri app
+        if: github.event_name == 'push'
+        run: npm run tauri build -- ${{ matrix.tauri-args }} --no-bundle
+
       # macOS: import Apple certificate for code signing
       - name: Import Apple certificate
-        if: runner.os == 'macOS'
+        if: github.event_name == 'workflow_dispatch' && runner.os == 'macOS'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -161,6 +184,7 @@ jobs:
           rm certificate.p12
 
       - name: Build Tauri app
+        if: github.event_name == 'workflow_dispatch'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
