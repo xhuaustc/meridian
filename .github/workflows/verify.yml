@@ -42,4 +42,21 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Restore nginx sidecar cache
+        id: nginx-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .nginx-build
+            src-tauri/binaries/nginx-x86_64-unknown-linux-gnu
+          key: nginx-${{ runner.os }}-x86_64-unknown-linux-gnu-${{ hashFiles('scripts/prepare-nginx.sh') }}
+
+      - name: Build nginx sidecar
+        if: steps.nginx-cache.outputs.cache-hit != 'true'
+        run: ./scripts/prepare-nginx.sh x86_64-unknown-linux-gnu
+
+      - name: Verify nginx sidecar
+        run: test -x src-tauri/binaries/nginx-x86_64-unknown-linux-gnu
+
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
