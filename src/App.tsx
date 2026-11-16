@@ -12,6 +12,8 @@ import { LogsPage } from "./pages/LogsPage";
 import { MonitorPage } from "./pages/MonitorPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+// PROTOTYPE (throwaway) — remove together with src/pages/PrototypeParamsUiPage.tsx
+import { PrototypeParamsUiPage } from "./pages/PrototypeParamsUiPage";
 import { useSettingsStore } from "./stores/settings-store";
 import { useEngineStore } from "./stores/engine-store";
 import { useToastStore } from "./stores/toast-store";
@@ -69,6 +71,8 @@ function App() {
           <Route path="/hosts" element={<HostsPage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          {/* PROTOTYPE (throwaway) — request-params + security UI variants */}
+          <Route path="/prototype/params-ui" element={<PrototypeParamsUiPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
