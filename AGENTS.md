@@ -24,3 +24,17 @@ Rust tests are inline `#[cfg(test)]` modules with descriptive `#[test]` names. A
 ## Commit & Pull Request Guidelines
 
 Recent commits commonly use concise prefixes such as `feat:`, `fix(ui):`, `docs:`, and `refactor(tray):`; use that pattern with a short imperative subject. Keep PRs scoped, explain the behavior changed, link a relevant issue or spec, and list commands actually run. Include screenshots for visible UI changes and note any unverified platform behavior. Never commit credentials, local build caches, or generated Nginx sidecar binaries.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs for this repo live as GitHub issues in `xhuaustc/meridian`, driven with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical triage roles, keeping the default label strings `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+single-context — one `GLOSSARY.md` at the repo root and ADRs in `docs/adr/`. See `docs/agents/domain.md`.
