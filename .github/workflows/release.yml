@@ -1,7 +1,6 @@
 name: Release
 
 on:
-  push:
   workflow_dispatch:
     inputs:
       target:
@@ -157,10 +156,6 @@ jobs:
           codesign --remove-signature src-tauri/binaries/nginx-${{ matrix.rust-target }} || true
 
       # --- Build Tauri app ---
-
-      - name: Compile Tauri app
-        if: github.event_name == 'push'
-        run: npm run tauri build -- ${{ matrix.tauri-args }} --no-bundle
 
       # macOS: import Apple certificate for code signing
       - name: Import Apple certificate
