@@ -69,6 +69,17 @@ if (-not (Test-Path $NginxExe)) {
 New-Item -ItemType Directory -Force -Path $BinariesDir | Out-Null
 Copy-Item $NginxExe $Dest -Force
 
+# Record what the official build actually contains. The configuration generator
+# probes the sidecar at runtime, so this log is the only place the module list
+# of the Windows artifact is visible to us.
+Write-Host ""
+Write-Host "=== nginx -V (module list of the official build) ==="
+$VersionOutput = (& $Dest -V 2>&1 | Out-String)
+Write-Host $VersionOutput
+$VersionFile = Join-Path $BuildDir "nginx-V.txt"
+$VersionOutput | Set-Content -Path $VersionFile -Encoding utf8
+Write-Host "Module list saved to: $VersionFile"
+
 Write-Host ""
 Write-Host "=== Done ==="
 Write-Host "nginx $NginxVersion placed at: $Dest"
