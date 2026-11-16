@@ -151,8 +151,16 @@ jobs:
             SIDECAR="src-tauri/binaries/nginx-${{ matrix.rust-target }}"
           fi
           ls -lh "$SIDECAR"
+
           echo "=== nginx -V (module list of the shipped sidecar) ==="
-          "$SIDECAR" -V 2>&1 || true
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            # The official Windows build cannot be configured by us; record what
+            # it ships with instead of asserting a module set we do not control.
+            "$SIDECAR" -V 2>&1 || echo "::warning::could not read the module list of the Windows sidecar"
+          else
+            "$SIDECAR" -V 2>&1 | tee /dev/stderr | grep -q -- '--with-http_v2_module' \
+              || { echo "::error::sidecar is missing the HTTP/2 module"; exit 1; }
+          fi
 
       - name: Remove macOS sidecar ad-hoc signature
         if: github.event_name == 'workflow_dispatch' && runner.os == 'macOS'

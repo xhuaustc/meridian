@@ -70,11 +70,17 @@ New-Item -ItemType Directory -Force -Path $BinariesDir | Out-Null
 Copy-Item $NginxExe $Dest -Force
 
 # Record what the official build actually contains. The configuration generator
-# probes the sidecar at runtime, so this log is the only place the module list
-# of the Windows artifact is visible to us.
+# will probe the sidecar at runtime (tracked separately), and this log is how the
+# module list of the Windows artifact stays visible to us.
 Write-Host ""
 Write-Host "=== nginx -V (module list of the official build) ==="
-$VersionOutput = (& $Dest -V 2>&1 | Out-String)
+# nginx writes -V to stderr; with $ErrorActionPreference = "Stop", Windows
+# PowerShell 5.1 turns that into a terminating NativeCommandError, so relax the
+# preference just for this capture.
+$previousPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$VersionOutput = (& $Dest -V 2>&1 | ForEach-Object { "$_" }) -join [Environment]::NewLine
+$ErrorActionPreference = $previousPreference
 Write-Host $VersionOutput
 $VersionFile = Join-Path $BuildDir "nginx-V.txt"
 $VersionOutput | Set-Content -Path $VersionFile -Encoding utf8

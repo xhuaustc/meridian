@@ -55,9 +55,23 @@ fi
 
 DEST="$BINARIES_DIR/nginx-$TARGET"
 
-# Skip if already built (unless FORCE_REBUILD)
+# Skip if already built (unless FORCE_REBUILD), but never silently hand back a
+# binary that predates the current module set: print its configure line, and
+# refuse when the HTTP/2 module is missing, because everything downstream
+# assumes it is there.
 if [ -f "$DEST" ] && [ "${FORCE_REBUILD:-0}" != "1" ]; then
     echo "nginx sidecar already exists at $DEST"
+    if existing_flags="$("$DEST" -V 2>&1)"; then
+        echo "$existing_flags" | grep -o -- '--with-[^ ]*' | tr '\n' ' '
+        echo ""
+        if ! echo "$existing_flags" | grep -q -- '--with-http_v2_module'; then
+            echo "This sidecar was built without --with-http_v2_module." >&2
+            echo "Re-run with FORCE_REBUILD=1 to rebuild it with the current module set." >&2
+            exit 1
+        fi
+    else
+        echo "Could not execute the existing binary to inspect its configure line."
+    fi
     echo "Set FORCE_REBUILD=1 to rebuild."
     exit 0
 fi
@@ -79,12 +93,13 @@ OPENSSL_URL="https://github.com/openssl/openssl/releases/download/openssl-${OPEN
 ZLIB_URL="https://github.com/madler/zlib/releases/download/v${ZLIB_VERSION}/zlib-${ZLIB_VERSION}.tar.gz"
 PCRE2_URL="https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_VERSION}/pcre2-${PCRE2_VERSION}.tar.gz"
 
-# Pinned checksums. Bumping a version means bumping its checksum here as well;
-# the build refuses to proceed on a mismatch rather than trusting the download.
-NGINX_SHA256="${NGINX_SHA256:-627fe086209bba80a2853a0add9d958d7ebbdffa1a8467a5784c9a6b4f03d738}"
-OPENSSL_SHA256="${OPENSSL_SHA256:-2e8a40b01979afe8be0bbfb3de5dc1c6709fedb46d6c89c10da114ab5fc3d281}"
-ZLIB_SHA256="${ZLIB_SHA256:-9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23}"
-PCRE2_SHA256="${PCRE2_SHA256:-86b9cb0aa3bcb7994faa88018292bc704cdbb708e785f7c74352ff6ea7d3175b}"
+# Pinned checksums for the versions above. Bumping a version means editing the
+# matching checksum here as well. Deliberately not overridable from the
+# environment: a build should never be pointed at an unverified archive.
+NGINX_SHA256="627fe086209bba80a2853a0add9d958d7ebbdffa1a8467a5784c9a6b4f03d738"
+OPENSSL_SHA256="2e8a40b01979afe8be0bbfb3de5dc1c6709fedb46d6c89c10da114ab5fc3d281"
+ZLIB_SHA256="9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
+PCRE2_SHA256="86b9cb0aa3bcb7994faa88018292bc704cdbb708e785f7c74352ff6ea7d3175b"
 
 echo "=== Meridian nginx builder ==="
 echo "nginx:   ${NGINX_VERSION}"
@@ -99,31 +114,17 @@ echo ""
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-# Helper: download and extract, verifying the archive against a pinned checksum
-fetch_and_extract() {
-    local name="$1" url="$2" dir="$3" expected_sha256="$4"
-    if [ -d "$dir" ]; then
-        echo "[$name] Already extracted: $dir"
-        return
-    fi
-    local archive="${dir}.tar.gz"
-    if [ ! -f "$archive" ]; then
-        echo "[$name] Downloading..."
-        curl -fSL --retry 3 -o "$archive" "$url"
-    fi
-    verify_sha256 "$name" "$archive" "$expected_sha256"
-    echo "[$name] Extracting..."
-    tar xzf "$archive"
-}
-
 # Helper: fail loudly when an archive does not match its pinned checksum
 verify_sha256() {
     local name="$1" file="$2" expected="$3"
     local actual
     if command -v sha256sum &>/dev/null; then
         actual="$(sha256sum "$file" | cut -d' ' -f1)"
-    else
+    elif command -v shasum &>/dev/null; then
         actual="$(shasum -a 256 "$file" | cut -d' ' -f1)"
+    else
+        echo "[$name] Neither sha256sum nor shasum is available; cannot verify $file." >&2
+        exit 1
     fi
     if [ "$actual" != "$expected" ]; then
         echo "[$name] Checksum mismatch for $file" >&2
@@ -134,7 +135,28 @@ verify_sha256() {
     fi
 }
 
-# Download all sources in parallel
+# Helper: verify, download and extract. Existing archives are verified too, so a
+# build directory restored from the CI cache is never trusted blindly.
+fetch_and_extract() {
+    local name="$1" url="$2" dir="$3" expected_sha256="$4"
+    local archive="${dir}.tar.gz"
+    if [ -f "$archive" ]; then
+        verify_sha256 "$name" "$archive" "$expected_sha256"
+    fi
+    if [ -d "$dir" ]; then
+        echo "[$name] Already extracted: $dir"
+        return
+    fi
+    if [ ! -f "$archive" ]; then
+        echo "[$name] Downloading..."
+        curl -fSL --retry 3 -o "$archive" "$url"
+        verify_sha256 "$name" "$archive" "$expected_sha256"
+    fi
+    echo "[$name] Extracting..."
+    tar xzf "$archive"
+}
+
+# Download and verify every source archive
 fetch_and_extract "nginx"   "$NGINX_URL"   "nginx-${NGINX_VERSION}"     "$NGINX_SHA256"
 fetch_and_extract "openssl" "$OPENSSL_URL" "openssl-${OPENSSL_VERSION}" "$OPENSSL_SHA256"
 fetch_and_extract "zlib"    "$ZLIB_URL"    "zlib-${ZLIB_VERSION}"      "$ZLIB_SHA256"
@@ -205,13 +227,16 @@ CONFIGURE_ARGS=(
     --without-stream_upstream_zone_module
 )
 
-# Apple Clang 16+ warns about unterminated string initializers (nginx 1.26.2 has
-# one in its HTTP/2 filter module) and nginx builds with -Werror, so the module
-# fails to compile unless the warning is silenced. Scope it to macOS: GCC on
-# Linux does not know this option.
-if [ "$(uname -s)" = "Darwin" ]; then
-    CONFIGURE_ARGS+=(--with-cc-opt="-Wno-unterminated-string-initialization")
-fi
+# Recent Apple Clang warns about unterminated string initializers; nginx 1.26.2
+# has one in its HTTP/2 filter module and builds with -Werror, so the module
+# would otherwise fail to compile. Gate on the target triple (not the host) and
+# keep -Wno-unknown-warning-option so older Clang releases, which do not know
+# the flag, do not turn it into a -Werror failure. GCC on Linux is unaffected.
+case "$TARGET" in
+    *-apple-darwin)
+        CONFIGURE_ARGS+=(--with-cc-opt="-Wno-unterminated-string-initialization -Wno-unknown-warning-option")
+        ;;
+esac
 
 ./configure "${CONFIGURE_ARGS[@]}"
 
@@ -223,6 +248,36 @@ make -j"${MAKE_JOBS}"
 mkdir -p "$BINARIES_DIR"
 cp objs/nginx "$DEST"
 chmod +x "$DEST"
+
+# Verify what we just built instead of trusting that configure did what we asked.
+echo ""
+echo "=== Verifying the built sidecar ==="
+if built_flags="$("$DEST" -V 2>&1)"; then
+    echo "$built_flags" | grep -o -- '--with-[^ ]*' | tr '\n' ' '
+    echo ""
+    if ! echo "$built_flags" | grep -q -- '--with-http_v2_module'; then
+        echo "Built sidecar is missing --with-http_v2_module." >&2
+        exit 1
+    fi
+    if ! echo "$built_flags" | grep -q -- '--with-pcre='; then
+        echo "Built sidecar did not use the bundled PCRE2." >&2
+        exit 1
+    fi
+else
+    echo "Could not execute the built binary (cross-compiled target?); skipping flag checks."
+fi
+
+# The self-contained promise means no dependency on whatever the build machine
+# happens to have installed. On macOS that is checkable from the Mach-O header.
+if otool -L "$DEST" >/dev/null 2>&1; then
+    foreign_deps="$(otool -L "$DEST" | tail -n +2 | awk '{print $1}' | grep -v '^/usr/lib/' || true)"
+    if [ -n "$foreign_deps" ]; then
+        echo "Sidecar links against non-system libraries:" >&2
+        echo "$foreign_deps" >&2
+        exit 1
+    fi
+    echo "Linkage check passed: system libraries only."
+fi
 
 # Show result
 echo ""
