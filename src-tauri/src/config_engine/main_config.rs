@@ -96,6 +96,8 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    use crate::config_engine::test_support::SidecarHarness;
+
     #[test]
     fn test_main_config_has_required_sections() {
         let data_dir = PathBuf::from("/tmp/test");
@@ -152,95 +154,23 @@ mod tests {
         assert!(!config.contains("http2"));
     }
 
-    /// Locate the sidecar built into this repository, which is the binary the
-    /// generated config must satisfy. Falling back to PATH would validate
-    /// against whatever nginx happens to be installed, which is a different
-    /// module set entirely.
-    fn repo_sidecar() -> Option<PathBuf> {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries");
-        std::fs::read_dir(dir)
-            .ok()?
-            .flatten()
-            .map(|entry| entry.path())
-            .find(|path| {
-                path.file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("nginx-"))
-            })
-    }
-
-    /// Generate a config for the given capabilities and hand it to the real
-    /// sidecar, failing with nginx's own diagnostics when it is rejected.
-    fn assert_sidecar_accepts(nginx: &Path, capabilities: Capabilities) -> String {
-        let data_dir =
-            std::env::temp_dir().join(format!("meridian-maincfg-{}", uuid::Uuid::new_v4()));
-        let nginx_dir = data_dir.join("nginx");
-        for dir in [
-            nginx_dir.join("logs"),
-            nginx_dir.join("temp/client_body"),
-            nginx_dir.join("temp/proxy"),
-            nginx_dir.join("conf.d"),
-            nginx_dir.join("stream.d"),
-        ] {
-            std::fs::create_dir_all(&dir).unwrap();
-        }
-        // nginx refuses an include whose glob matches nothing.
-        std::fs::write(nginx_dir.join("conf.d/.keep.conf"), "# placeholder\n").unwrap();
-        std::fs::write(nginx_dir.join("stream.d/.keep.conf"), "# placeholder\n").unwrap();
-
-        let config = generate_main_config(&data_dir, "1", capabilities);
-        let config_path = nginx_dir.join("nginx.conf");
-        std::fs::write(&config_path, &config).unwrap();
-
-        let output = std::process::Command::new(nginx)
-            .arg("-t")
-            .arg("-c")
-            .arg(&config_path)
-            .arg("-p")
-            .arg(&nginx_dir)
-            .output()
-            .expect("failed to run nginx -t");
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let _ = std::fs::remove_dir_all(&data_dir);
-
-        assert!(
-            output.status.success(),
-            "generated config rejected by {}: {}",
-            nginx.display(),
-            stderr
-        );
-        config
-    }
-
     /// What the shipped binary advertises and what the generator emits must
     /// agree, and the result must still be valid configuration. Skips (loudly)
     /// when the sidecar has not been built on this machine.
     #[test]
     fn test_generated_main_config_matches_what_the_sidecar_supports() {
-        let Some(nginx) = repo_sidecar() else {
-            eprintln!(
-                "skipping: run scripts/prepare-nginx.sh to validate the generated config against the sidecar"
+        let Some((config, capabilities)) = SidecarHarness::with_configs(|harness| {
+            let capabilities = harness.capabilities();
+            assert!(
+                capabilities.probed,
+                "sidecar did not report a configure line"
             );
+            let config = harness.write_main_config("1", capabilities);
+            (config, capabilities)
+        }) else {
             return;
         };
 
-        let probe = std::process::Command::new(&nginx)
-            .arg("-V")
-            .output()
-            .expect("failed to run nginx -V");
-        let probe_output = format!(
-            "{}{}",
-            String::from_utf8_lossy(&probe.stdout),
-            String::from_utf8_lossy(&probe.stderr)
-        );
-        let capabilities = crate::nginx_manager::parse_capabilities(&probe_output);
-        assert!(
-            capabilities.probed,
-            "sidecar did not report a configure line: {}",
-            probe_output
-        );
-
-        let config = assert_sidecar_accepts(&nginx, capabilities);
         assert_eq!(
             config.contains("http2 on;"),
             capabilities.http2,
@@ -252,18 +182,18 @@ mod tests {
     /// the directive is omitted rather than emitted and left to fail.
     #[test]
     fn test_config_without_http2_is_still_accepted_by_the_sidecar() {
-        let Some(nginx) = repo_sidecar() else {
-            eprintln!("skipping: run scripts/prepare-nginx.sh to validate the generated config");
+        let Some(config) = SidecarHarness::with_configs(|harness| {
+            harness.write_main_config(
+                "1",
+                Capabilities {
+                    probed: true,
+                    http2: false,
+                },
+            )
+        }) else {
             return;
         };
 
-        let config = assert_sidecar_accepts(
-            &nginx,
-            Capabilities {
-                probed: true,
-                http2: false,
-            },
-        );
         assert!(!config.contains("http2"));
     }
 
