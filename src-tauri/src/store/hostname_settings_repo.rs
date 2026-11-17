@@ -74,6 +74,44 @@ pub fn set_hsts(
         .ok_or_else(|| AppError::NotFound(format!("Hostname settings for '{}'", hostname)))
 }
 
+/// Delete one settings row only if no proxy rule names its hostname.
+///
+/// The reference check lives in the DELETE statement itself, not in a caller
+/// side map: cleanup must be unable to remove a row that a rule still uses,
+/// even if the row list it started from was stale.
+fn delete_if_unreferenced(conn: &Connection, hostname: &str) -> Result<bool, AppError> {
+    let deleted = conn.execute(
+        "DELETE FROM hostname_settings
+         WHERE hostname = ?1
+           AND NOT EXISTS (
+               SELECT 1 FROM proxy_rules WHERE proxy_rules.domain = ?1
+           )",
+        params![hostname],
+    )?;
+    Ok(deleted > 0)
+}
+
+/// Delete every settings row that no proxy rule references any more.
+///
+/// This is the settings page's cleanup action. Returns the hostnames that were
+/// deleted, in list order, so the caller can report how many rows went away.
+/// A row referenced by a rule — even a disabled rule — is never touched.
+pub fn delete_orphans(conn: &Connection) -> Result<Vec<String>, AppError> {
+    let mut stmt = conn.prepare("SELECT hostname FROM hostname_settings ORDER BY hostname ASC")?;
+    let hostnames = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    let mut deleted = Vec::new();
+    for hostname in hostnames {
+        if delete_if_unreferenced(conn, &hostname)? {
+            deleted.push(hostname);
+        }
+    }
+    Ok(deleted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,5 +202,84 @@ mod tests {
             "updating HSTS must not rewrite the creation time"
         );
         assert_ne!(stored.updated_at, "2024-01-01T00:00:00Z");
+    }
+
+    fn insert_rule(conn: &Connection, id: &str, domain: &str, enabled: bool) {
+        conn.execute(
+            "INSERT INTO proxy_rules
+                 (id, name, proxy_type, enabled, listen_port, domain,
+                  upstream_host, upstream_port, created_at, updated_at)
+             VALUES (?1, ?1, 'http', ?2, 18080, ?3,
+                     '127.0.0.1', 18081, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')",
+            rusqlite::params![id, if enabled { 1 } else { 0 }, domain],
+        )
+        .unwrap();
+    }
+
+    fn insert_settings(conn: &Connection, hostname: &str, hsts_enabled: bool) {
+        conn.execute(
+            "INSERT INTO hostname_settings (hostname, hsts_enabled, created_at, updated_at)
+             VALUES (?1, ?2, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')",
+            rusqlite::params![hostname, if hsts_enabled { 1 } else { 0 }],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn delete_orphans_removes_only_rows_no_rule_names() {
+        let conn = Connection::open_in_memory().unwrap();
+        super::super::run_migrations(&conn).unwrap();
+        insert_rule(&conn, "rule-app", "app.local", true);
+        insert_rule(&conn, "rule-disabled", "disabled.local", false);
+        insert_settings(&conn, "app.local", true);
+        insert_settings(&conn, "disabled.local", false);
+        insert_settings(&conn, "orphan.local", true);
+
+        let deleted = delete_orphans(&conn).unwrap();
+        assert_eq!(deleted, vec!["orphan.local".to_string()]);
+
+        let remaining = list_all(&conn).unwrap();
+        assert!(remaining.contains_key("app.local"));
+        assert!(
+            remaining.contains_key("disabled.local"),
+            "a disabled rule still references its hostname, so cleanup keeps the row"
+        );
+        assert!(!remaining.contains_key("orphan.local"));
+    }
+
+    #[test]
+    fn cleanup_refuses_to_delete_a_row_a_rule_still_references() {
+        let conn = Connection::open_in_memory().unwrap();
+        super::super::run_migrations(&conn).unwrap();
+        insert_rule(&conn, "rule-app", "app.local", true);
+        insert_settings(&conn, "app.local", true);
+
+        assert!(!delete_if_unreferenced(&conn, "app.local").unwrap());
+        assert!(
+            get(&conn, "app.local").unwrap().is_some(),
+            "a referenced row must survive even when cleanup is handed its name"
+        );
+    }
+
+    #[test]
+    fn delete_orphans_on_an_empty_database_returns_nothing() {
+        let conn = Connection::open_in_memory().unwrap();
+        super::super::run_migrations(&conn).unwrap();
+        assert!(delete_orphans(&conn).unwrap().is_empty());
+        assert!(list_all(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn overview_through_the_repositories_is_empty_on_a_fresh_database() {
+        let conn = Connection::open_in_memory().unwrap();
+        super::super::run_migrations(&conn).unwrap();
+
+        let settings = list_all(&conn).unwrap();
+        let rules = crate::store::proxy_repo::list_all(&conn).unwrap();
+        let overview = crate::config_engine::hostname_settings::overview(&settings, &rules);
+
+        assert!(overview.entries.is_empty());
+        assert_eq!(overview.orphan_count, 0);
+        assert_eq!(overview.orphan_hsts_count, 0);
     }
 }

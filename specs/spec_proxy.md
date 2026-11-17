@@ -8,6 +8,7 @@
 | 2026-04-04 | Add default listen port on proxy type selection (HTTP→80, HTTPS→443) | UX improvement |
 | 2026-11-17 | Add `force_https` flag: port-80 308 redirect is synthesised at generation time, never stored as a rule | Ticket #22 |
 | 2026-11-17 | Add the per-hostname HSTS switch (TLS-terminate rules only), the same-hostname read-only hint and four non-blocking risk prompts | Ticket #23 |
+| 2026-11-17 | Add `list_hostname_settings` / `cleanup_orphan_hostname_settings`: rule reference counts, orphan flag and guarded cleanup of unreferenced rows | Ticket #25 |
 
 ## Feature Description
 
@@ -144,6 +145,9 @@
 | TP-026 | Normal | Switch a TLS rule to non-TLS while the hostname's HSTS is on | Confirm dialog; continuing applies the change | Non-blocking |
 | TP-027 | Normal | Delete a rule whose domain has HSTS on | Delete dialog adds the "browser cache stays" warning; delete still works | Single + batch |
 | TP-028 | Boundary | HSTS on + certificate expires within 30 days | Rule row shows the HSTS/cert-expiring warning and the form shows the inline note | Non-blocking |
+| TP-029 | Normal | `list_hostname_settings` with two rules on `app.local` (one disabled) and an unreferenced `gone.local` row | `app.local` has `rule_count = 2`; `gone.local` has `is_orphan = true`; overview counts are 1 orphan | Backend computes references from the rule list |
+| TP-030 | Normal | `cleanup_orphan_hostname_settings` with one referenced and one orphan row | Only the orphan row is deleted; the referenced row survives | Reference guard is inside the DELETE |
+| TP-031 | Boundary | `list_hostname_settings` / cleanup on a database with no rules and no settings | Empty entries and zero counts; cleanup removes nothing and does not fail | |
 
 ## Implementation Map
 
@@ -153,6 +157,7 @@
 | Port conflict check | `src-tauri/src/commands/engine.rs` | `check_port_conflict` | |
 | Force-HTTPS availability check | `src-tauri/src/commands/proxy.rs` | `check_force_https` | Backs the form's yellow "skipped" hint |
 | HSTS commands | `src-tauri/src/commands/proxy.rs` | `get_hostname_hsts`, `set_hostname_hsts`, `list_hsts_hostnames` | Per-hostname switch, write + regenerate; list feeds the deletion/cert warnings |
+| Hostname settings list + orphan cleanup | `src-tauri/src/commands/proxy.rs` | `list_hostname_settings`, `cleanup_orphan_hostname_settings` | Rule counts come from `proxy_repo::list_all`; cleanup deletes only rows no rule names |
 | HSTS ownership | `src-tauri/src/config_engine/hsts.rs` | `owner_rule`, `check` | Only the lowest TLS port's rule owns the form toggle |
 | Input validation | `src-tauri/src/validators.rs` | `validate_create_proxy`, `validate_update_proxy` | |
 | Frontend proxy form | `src/components/proxy/ProxyForm.tsx` | `ProxyForm` | Field validation + default ports |

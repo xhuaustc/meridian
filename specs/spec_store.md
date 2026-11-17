@@ -6,6 +6,7 @@
 | 2026-04-04 | Initial spec | Phase 2d |
 | 2026-11-17 | Add `hostname_settings` (HSTS + three security header switches, per hostname) | Ticket #20 |
 | 2026-11-17 | Add `get` / `set_hsts` to `hostname_settings_repo`; HSTS is now emitted by the generator | Ticket #23 |
+| 2026-11-17 | Add `delete_orphans` to `hostname_settings_repo` and `list_all` to `proxy_repo` for the settings page's domain cleanup | Ticket #25 |
 
 ## Feature Description
 
@@ -79,8 +80,9 @@ SQLite 数据持久化层，负责所有配置数据的存储、查询、迁移�
 | `list_all()` | — | `HashMap<String, HostnameSettings>` | key = hostname；无行 = 三个安全头全开、HSTS 关 |
 | `get(hostname)` | hostname | `Option<HostnameSettings>` | 单行读取；没有行返回 `None` |
 | `set_hsts(hostname, enabled, max_age, include_subdomains)` | 四个值 | `HostnameSettings` | Upsert，只改三个 HSTS 列 + `updated_at`；新建行时三个安全头取列默认（全开），`created_at` 只在首次写入 |
+| `delete_orphans()` | — | `Vec<String>` | 删除没有任何 `proxy_rules.domain` 指向的 `hostname_settings` 行，返回被删 hostname；DELETE 语句自带 `NOT EXISTS` 守卫，禁用规则也算引用 |
 
-`hostname_settings` 是 **hostname 主键**的表（`hsts_enabled` / `hsts_max_age` / `hsts_include_subdomains` / `sec_nosniff` / `sec_referrer_policy` / `sec_frame_options` + `created_at` / `updated_at`）。DDL 用 `CREATE TABLE IF NOT EXISTS` 幂等创建，旧库升级后自动就位；默认值：三个安全头 `1`（开），HSTS `0`（关），`hsts_max_age` 300。生成器读取整张表；规则表单通过 `get_hostname_hsts` / `set_hostname_hsts` 读写 HSTS，`set_hsts` 不碰安全头开关，避免把用户的其他选择重置。
+`hostname_settings` 是 **hostname 主键**的表（`hsts_enabled` / `hsts_max_age` / `hsts_include_subdomains` / `sec_nosniff` / `sec_referrer_policy` / `sec_frame_options` + `created_at` / `updated_at`）。DDL 用 `CREATE TABLE IF NOT EXISTS` 幂等创建，旧库升级后自动就位；默认值：三个安全头 `1`（开），HSTS `0`（关），`hsts_max_age` 300。生成器读取整张表；规则表单通过 `get_hostname_hsts` / `set_hostname_hsts` 读写 HSTS，`set_hsts` 不碰安全头开关，避免把用户的其他选择重置。设置页通过 `list_hostname_settings` 读出整张表与引用计数，`delete_orphans` 只清理无引用行。
 
 ### Backup & Export
 
@@ -103,6 +105,7 @@ SQLite 数据持久化层，负责所有配置数据的存储、查询、迁移�
 5. `import_json` 在单个事务中执行：先清空所有表，再逐表插入。失败时整体回滚
 6. Schema migration 前自动备份数据库到 `backups/meridian_{timestamp}.db`
 7. `ProxyFilter.keyword` 搜索范围：name, domain, upstream_host（LIKE 模糊匹配）
+8. `hostname_settings` 孤儿 = 没有任何 `proxy_rules.domain`（含禁用规则）指向该 hostname；清理只删孤儿，DELETE 带 `NOT EXISTS` 守卫，引用中的行永不删除
 
 ## Test Points
 
@@ -122,6 +125,9 @@ SQLite 数据持久化层，负责所有配置数据的存储、查询、迁移�
 | TP-012 | Normal | `count_by_type` with 2 HTTP + 1 TCP rules | `{"http": 2, "stream_tcp": 1}` | |
 | TP-013 | Normal | `list` with keyword filter "api" | Returns rules where name/domain/upstream contains "api" | |
 | TP-014 | Combination | Migration + backup: add new column migration | Backup created before migration; migration succeeds; new column available | |
+| TP-015 | Normal | `delete_orphans` with one referenced and one unreferenced row | Only the unreferenced row is deleted | |
+| TP-016 | Boundary | `delete_orphans` with a row referenced only by a disabled rule | Row is kept | Disabled rules still count as references |
+| TP-017 | Boundary | `delete_orphans` on an empty database | Empty result, no error | |
 
 ## Implementation Map
 

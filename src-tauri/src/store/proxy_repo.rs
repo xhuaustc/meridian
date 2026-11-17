@@ -222,6 +222,15 @@ pub fn list_enabled(conn: &Connection) -> Result<Vec<ProxyRule>, AppError> {
     Ok(rules)
 }
 
+/// Every rule, enabled or not.
+///
+/// The config generator only reads enabled rules, but callers that ask
+/// "does any rule still name this hostname?" must also see disabled ones: a
+/// disabled rule is still configuration the user can turn back on.
+pub fn list_all(conn: &Connection) -> Result<Vec<ProxyRule>, AppError> {
+    list_filtered(conn, None, None, None)
+}
+
 /// Count proxy rules grouped by proxy_type.
 pub fn count_by_type(conn: &Connection) -> Result<HashMap<String, i64>, AppError> {
     let mut stmt =
