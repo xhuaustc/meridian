@@ -4,6 +4,7 @@
 | Date | Change | Reason |
 |------|--------|--------|
 | 2026-04-04 | Initial spec | Phase 2d |
+| 2026-11-17 | Add `hostname_settings` (HSTS + three security header switches, per hostname) | Ticket #20 |
 
 ## Feature Description
 
@@ -70,6 +71,14 @@ SQLite 数据持久化层，负责所有配置数据的存储、查询、迁移�
 | `set(key: &str, value: &str)` | key + value | `()` | upsert |
 | `get_all()` | — | `HashMap<String, String>` | |
 
+### HostnameSettingsRepo
+
+| Function | Input | Output | Notes |
+|----------|-------|--------|-------|
+| `list_all()` | — | `HashMap<String, HostnameSettings>` | key = hostname；无行 = 三个安全头全开、HSTS 关 |
+
+`hostname_settings` 是 **hostname 主键**的表（`hsts_enabled` / `hsts_max_age` / `hsts_include_subdomains` / `sec_nosniff` / `sec_referrer_policy` / `sec_frame_options` + `created_at` / `updated_at`）。DDL 用 `CREATE TABLE IF NOT EXISTS` 幂等创建，旧库升级后自动就位；默认值：三个安全头 `1`（开），HSTS `0`（关），`hsts_max_age` 300。本版只有生成器读取，UI 在后续票落地。
+
 ### Backup & Export
 
 | Function | Input | Output | Notes |
@@ -80,7 +89,7 @@ SQLite 数据持久化层，负责所有配置数据的存储、查询、迁移�
 
 ## Data Model
 
-(See design.md — ProxyRule, Certificate, AccessList, AccessRule, AppSettings tables)
+(See design.md — ProxyRule, Certificate, AccessList, AccessRule, AppSettings, HostnameSettings tables)
 
 ## Business Rules
 

@@ -2,6 +2,7 @@ pub mod conflict;
 pub mod error_pages;
 pub mod http_config;
 pub mod main_config;
+pub mod security_headers;
 pub mod stream_config;
 
 #[cfg(test)]
@@ -56,13 +57,16 @@ fn write_config(path: &Path, content: &str) -> Result<(), AppError> {
 use tracing::{info, warn};
 
 use crate::error::AppError;
-use crate::store::models::{AccessList, AccessRule, Certificate, PortConflict, ProxyRule};
-use crate::store::{access_repo, cert_repo, proxy_repo, settings_repo};
+use crate::store::models::{
+    AccessList, AccessRule, Certificate, HostnameSettings, PortConflict, ProxyRule,
+};
+use crate::store::{access_repo, cert_repo, hostname_settings_repo, proxy_repo, settings_repo};
 
 pub struct ConfigData {
     pub rules: Vec<ProxyRule>,
     pub certs: Vec<Certificate>,
     pub access_lists: Vec<(AccessList, Vec<AccessRule>)>,
+    pub hostname_settings: HashMap<String, HostnameSettings>,
     pub worker_processes: String,
 }
 
@@ -143,6 +147,7 @@ pub fn preview_db_state(
             &data.rules,
             &data.certs,
             &data.access_lists,
+            &data.hostname_settings,
             &data.worker_processes,
             crate::nginx_manager::capabilities(),
         )?;
@@ -210,12 +215,14 @@ pub fn load_config_data(db: &rusqlite::Connection) -> Result<ConfigData, AppErro
         let rules = access_repo::list_rules_by_list(db, &list.id)?;
         access_lists.push((list, rules));
     }
+    let hostname_settings = hostname_settings_repo::list_all(db)?;
     let worker_processes =
         settings_repo::get(db, "worker_processes")?.unwrap_or_else(|| "2".to_string());
     Ok(ConfigData {
         rules,
         certs,
         access_lists,
+        hostname_settings,
         worker_processes,
     })
 }
@@ -230,6 +237,7 @@ pub fn apply_db_state(
         &data.rules,
         &data.certs,
         &data.access_lists,
+        &data.hostname_settings,
         &data.worker_processes,
         crate::nginx_manager::capabilities(),
     )
@@ -237,11 +245,15 @@ pub fn apply_db_state(
 
 /// Generate all configs with explicit settings.
 /// `worker_processes`: "auto" or a numeric string (default "2").
+///
+/// `hostname_settings` carries the per-hostname security switches; hostnames
+/// without a row keep the default headers.
 pub fn generate_all_configs_with_settings(
     data_dir: &Path,
     rules: &[ProxyRule],
     certs: &[Certificate],
     access_lists: &[(AccessList, Vec<AccessRule>)],
+    hostname_settings: &HashMap<String, HostnameSettings>,
     worker_processes: &str,
     capabilities: crate::nginx_manager::Capabilities,
 ) -> Result<Vec<PortConflict>, AppError> {
@@ -317,8 +329,13 @@ pub fn generate_all_configs_with_settings(
 
     // Generate HTTP config files
     for ((port, domain), group_rules) in &http_groups {
-        let mut config =
-            http_config::generate_server_block(group_rules, certs, access_lists, data_dir);
+        let mut config = http_config::generate_server_block(
+            group_rules,
+            certs,
+            access_lists,
+            data_dir,
+            hostname_settings,
+        );
         if redirect_owner.get(domain.as_str()) == Some(port) {
             config.push('\n');
             config.push_str(&http_config::generate_https_redirect_block(domain));
@@ -460,6 +477,7 @@ pub fn apply_and_reload(
     rules: &[ProxyRule],
     certs: &[Certificate],
     access_lists: &[(AccessList, Vec<AccessRule>)],
+    hostname_settings: &HashMap<String, HostnameSettings>,
     worker_processes: &str,
     capabilities: crate::nginx_manager::Capabilities,
 ) -> Result<Vec<PortConflict>, AppError> {
@@ -472,6 +490,7 @@ pub fn apply_and_reload(
         rules,
         certs,
         access_lists,
+        hostname_settings,
         worker_processes,
         capabilities,
     ) {
@@ -628,11 +647,21 @@ mod preview_tests {
         rules: &[ProxyRule],
         certs: &[Certificate],
     ) -> Vec<PortConflict> {
+        generate_into_with_settings(data_dir, rules, certs, &HashMap::new())
+    }
+
+    fn generate_into_with_settings(
+        data_dir: &Path,
+        rules: &[ProxyRule],
+        certs: &[Certificate],
+        hostname_settings: &HashMap<String, HostnameSettings>,
+    ) -> Vec<PortConflict> {
         generate_all_configs_with_settings(
             data_dir,
             rules,
             certs,
             &[],
+            hostname_settings,
             "1",
             crate::nginx_manager::Capabilities::default(),
         )
@@ -785,6 +814,62 @@ mod preview_tests {
         let _ = fs::remove_dir_all(&data_dir);
     }
 
+    #[test]
+    fn load_config_data_reads_hostname_settings_from_the_database() {
+        let data_dir = temp_data_dir("load-hostname-settings");
+        let db = crate::store::init_database(&data_dir.join("meridian.db")).unwrap();
+        db.execute(
+            "INSERT INTO hostname_settings
+                 (hostname, sec_nosniff, created_at, updated_at)
+             VALUES ('app.local', 0, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+
+        let data = load_config_data(&db).unwrap();
+        let settings = data
+            .hostname_settings
+            .get("app.local")
+            .expect("the migration-created table row must reach generation");
+        assert!(!settings.sec_nosniff);
+        assert!(settings.sec_referrer_policy);
+        assert!(settings.sec_frame_options);
+
+        drop(db);
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn a_hostname_settings_row_turns_off_one_header_in_the_generated_file() {
+        let data_dir = temp_data_dir("hostname-settings");
+        let settings = HashMap::from([(
+            "app.local".to_string(),
+            HostnameSettings {
+                hostname: "app.local".to_string(),
+                sec_nosniff: false,
+                ..HostnameSettings::default()
+            },
+        )]);
+        assert!(generate_into_with_settings(
+            &data_dir,
+            &[http_rule("plain", 80, "app.local")],
+            &[],
+            &settings,
+        )
+        .is_empty());
+
+        let config = fs::read_to_string(data_dir.join("nginx/conf.d/80_app_local.conf")).unwrap();
+        assert!(
+            !config.contains("X-Content-Type-Options"),
+            "the hostname's switch must remove the header from its server block"
+        );
+        assert!(
+            config.contains("add_header Referrer-Policy strict-origin-when-cross-origin always;")
+        );
+        assert!(config.contains("add_header X-Frame-Options SAMEORIGIN always;"));
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
     /// The synthesised block must be accepted by the nginx binary we ship, not
     /// just by our own string checks. Skips (loudly) when the sidecar has not
     /// been built on this machine.
@@ -866,7 +951,12 @@ mod preview_tests {
 /// judging the result instead of hand-rolling its own `nginx -t` invocation.
 #[cfg(test)]
 mod sidecar_tests {
-    use super::test_support::{self, count_directive_in_blocks, SidecarHarness};
+    use std::collections::HashMap;
+
+    use super::test_support::{
+        self, assert_every_add_header_applies_to_error_responses,
+        assert_no_add_header_in_locations, count_directive_in_blocks, SidecarHarness,
+    };
 
     #[test]
     fn generated_http_and_stream_configs_are_accepted_by_the_sidecar() {
@@ -875,7 +965,14 @@ mod sidecar_tests {
                 test_support::http_rule("rule-http-000000000001", "app.local"),
                 test_support::stream_rule("rule-stream-0000000001", 15432),
             ];
-            harness.generate_all(&rules, &[], &[], "1", harness.capabilities());
+            harness.generate_all(
+                &rules,
+                &[],
+                &[],
+                &HashMap::new(),
+                "1",
+                harness.capabilities(),
+            );
             (
                 harness.read("conf.d/18080_app_local.conf"),
                 harness.read("stream.d/stream_15432_stream_tcp.conf"),
@@ -898,5 +995,42 @@ mod sidecar_tests {
             count_directive_in_blocks(&stream_config, "server", "proxy_pass"),
             1
         );
+    }
+
+    #[test]
+    fn the_default_security_headers_are_accepted_by_the_sidecar() {
+        let Some((http_config, stream_config)) = SidecarHarness::with_configs(|harness| {
+            let rules = [
+                test_support::http_rule("rule-http-000000000002", "headers.local"),
+                test_support::stream_rule("rule-stream-0000000002", 15433),
+            ];
+            harness.generate_all(
+                &rules,
+                &[],
+                &[],
+                &HashMap::new(),
+                "1",
+                harness.capabilities(),
+            );
+            (
+                harness.read("conf.d/18080_headers_local.conf"),
+                harness.read("stream.d/stream_15433_stream_tcp.conf"),
+            )
+        }) else {
+            return;
+        };
+
+        assert_eq!(
+            count_directive_in_blocks(&http_config, "server", "add_header"),
+            3,
+            "every HTTP server block carries the complete default header list"
+        );
+        assert_eq!(
+            count_directive_in_blocks(&stream_config, "server", "add_header"),
+            0,
+            "response headers belong to the HTTP layer; stream configs never carry them"
+        );
+        assert_no_add_header_in_locations(&http_config);
+        assert_every_add_header_applies_to_error_responses(&http_config);
     }
 }

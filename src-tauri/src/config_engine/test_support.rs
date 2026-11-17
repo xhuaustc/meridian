@@ -14,12 +14,15 @@
 //!
 //! Nothing here is compiled into the shipped app.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use super::main_config;
 use crate::nginx_manager::{parse_capabilities, Capabilities};
-use crate::store::models::{AccessList, AccessRule, Certificate, PortConflict, ProxyRule};
+use crate::store::models::{
+    AccessList, AccessRule, Certificate, HostnameSettings, PortConflict, ProxyRule,
+};
 
 /// Prefix-relative directories the generated config points at. nginx has to find
 /// them already present before `nginx -t`, otherwise it fails while setting up
@@ -224,6 +227,7 @@ impl SidecarHarness {
         rules: &[ProxyRule],
         certs: &[Certificate],
         access_lists: &[(AccessList, Vec<AccessRule>)],
+        hostname_settings: &HashMap<String, HostnameSettings>,
         worker_processes: &str,
         capabilities: Capabilities,
     ) -> Vec<PortConflict> {
@@ -232,6 +236,7 @@ impl SidecarHarness {
             rules,
             certs,
             access_lists,
+            hostname_settings,
             worker_processes,
             capabilities,
         )

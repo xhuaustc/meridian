@@ -420,12 +420,15 @@ pub fn run() {
                             access_lists.push((al.clone(), rules));
                         }
                     }
+                    let hostname_settings =
+                        store::hostname_settings_repo::list_all(&db).unwrap_or_default();
                     drop(db);
                     let _ = config_engine::generate_all_configs_with_settings(
                         &app_data_dir,
                         &rules,
                         &certs,
                         &access_lists,
+                        &hostname_settings,
                         &worker_processes,
                         nginx_manager::capabilities(),
                     );
