@@ -23,6 +23,7 @@ fn row_to_proxy(row: &rusqlite::Row) -> rusqlite::Result<ProxyRule> {
         access_list_id: row.get("access_list_id")?,
         websocket: row.get::<_, i32>("websocket")? != 0,
         keep_alive: row.get::<_, i32>("keep_alive")? != 0,
+        force_https: row.get::<_, i32>("force_https")? != 0,
         custom_headers: row.get("custom_headers")?,
         upstream_targets: row.get("upstream_targets")?,
         sort_order: row.get("sort_order")?,
@@ -61,11 +62,16 @@ pub fn create(conn: &Connection, input: &CreateProxyRule) -> Result<ProxyRule, A
     } else {
         0
     };
+    let force_https = if input.force_https.unwrap_or(false) {
+        1
+    } else {
+        0
+    };
     let sort_order = input.sort_order.unwrap_or(0);
 
     conn.execute(
-        "INSERT INTO proxy_rules (id, name, proxy_type, enabled, listen_port, listen_host, domain, path_prefix, upstream_host, upstream_port, upstream_scheme, tls_mode, certificate_id, access_list_id, websocket, keep_alive, custom_headers, upstream_targets, sort_order, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+        "INSERT INTO proxy_rules (id, name, proxy_type, enabled, listen_port, listen_host, domain, path_prefix, upstream_host, upstream_port, upstream_scheme, tls_mode, certificate_id, access_list_id, websocket, keep_alive, force_https, custom_headers, upstream_targets, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
         params![
             id,
             input.name,
@@ -82,6 +88,7 @@ pub fn create(conn: &Connection, input: &CreateProxyRule) -> Result<ProxyRule, A
             input.access_list_id,
             websocket,
             keep_alive,
+            force_https,
             input.custom_headers,
             input.upstream_targets,
             sort_order,
@@ -122,6 +129,7 @@ pub fn update(conn: &Connection, id: &str, input: &UpdateProxyRule) -> Result<Pr
     let tls_mode = input.tls_mode.as_deref().unwrap_or(&existing.tls_mode);
     let websocket = input.websocket.unwrap_or(existing.websocket);
     let keep_alive = input.keep_alive.unwrap_or(existing.keep_alive);
+    let force_https = input.force_https.unwrap_or(existing.force_https);
     let sort_order = input.sort_order.unwrap_or(existing.sort_order);
 
     // Optional fields: always use value from input (allows clearing by sending null)
@@ -133,7 +141,7 @@ pub fn update(conn: &Connection, id: &str, input: &UpdateProxyRule) -> Result<Pr
     let upstream_targets: &Option<String> = &input.upstream_targets;
 
     conn.execute(
-        "UPDATE proxy_rules SET name=?1, proxy_type=?2, enabled=?3, listen_port=?4, listen_host=?5, domain=?6, path_prefix=?7, upstream_host=?8, upstream_port=?9, upstream_scheme=?10, tls_mode=?11, certificate_id=?12, access_list_id=?13, websocket=?14, keep_alive=?15, custom_headers=?16, upstream_targets=?17, sort_order=?18, updated_at=?19 WHERE id=?20",
+        "UPDATE proxy_rules SET name=?1, proxy_type=?2, enabled=?3, listen_port=?4, listen_host=?5, domain=?6, path_prefix=?7, upstream_host=?8, upstream_port=?9, upstream_scheme=?10, tls_mode=?11, certificate_id=?12, access_list_id=?13, websocket=?14, keep_alive=?15, force_https=?16, custom_headers=?17, upstream_targets=?18, sort_order=?19, updated_at=?20 WHERE id=?21",
         params![
             name,
             proxy_type,
@@ -150,6 +158,7 @@ pub fn update(conn: &Connection, id: &str, input: &UpdateProxyRule) -> Result<Pr
             access_list_id,
             if websocket { 1 } else { 0 },
             if keep_alive { 1 } else { 0 },
+            if force_https { 1 } else { 0 },
             custom_headers,
             upstream_targets,
             sort_order,
@@ -310,4 +319,83 @@ pub fn list_filtered(
         .query_map(params_refs.as_slice(), |row| row_to_proxy(row))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rules)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_input() -> CreateProxyRule {
+        CreateProxyRule {
+            name: "app".to_string(),
+            proxy_type: "http".to_string(),
+            listen_port: 443,
+            listen_host: None,
+            domain: Some("app.local".to_string()),
+            path_prefix: None,
+            upstream_host: "127.0.0.1".to_string(),
+            upstream_port: 3000,
+            upstream_scheme: None,
+            tls_mode: Some("terminate".to_string()),
+            certificate_id: None,
+            access_list_id: None,
+            websocket: None,
+            keep_alive: None,
+            force_https: None,
+            custom_headers: None,
+            upstream_targets: None,
+            sort_order: None,
+        }
+    }
+
+    fn update_force_https(force_https: bool) -> UpdateProxyRule {
+        UpdateProxyRule {
+            name: None,
+            proxy_type: None,
+            enabled: None,
+            listen_port: None,
+            listen_host: None,
+            domain: Some("app.local".to_string()),
+            path_prefix: None,
+            upstream_host: None,
+            upstream_port: None,
+            upstream_scheme: None,
+            tls_mode: None,
+            certificate_id: None,
+            access_list_id: None,
+            websocket: None,
+            keep_alive: None,
+            force_https: Some(force_https),
+            custom_headers: None,
+            upstream_targets: None,
+            sort_order: None,
+        }
+    }
+
+    #[test]
+    fn force_https_defaults_to_off_and_survives_create_and_update() {
+        let path = std::env::temp_dir().join(format!(
+            "meridian-proxy-force-https-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let db = crate::store::init_database(&path).unwrap();
+
+        let default_rule = create(&db, &create_input()).unwrap();
+        assert!(!default_rule.force_https, "rules default to no redirect");
+
+        let mut input = create_input();
+        input.force_https = Some(true);
+        let rule = create(&db, &input).unwrap();
+        assert!(rule.force_https);
+        assert!(get_by_id(&db, &rule.id).unwrap().force_https);
+
+        update(&db, &rule.id, &update_force_https(false)).unwrap();
+        assert!(
+            !get_by_id(&db, &rule.id).unwrap().force_https,
+            "turning the flag off must be persisted"
+        );
+
+        drop(db);
+        let _ = std::fs::remove_file(path);
+    }
 }

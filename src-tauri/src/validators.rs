@@ -440,6 +440,7 @@ mod tests {
             access_list_id: None,
             websocket: None,
             keep_alive: None,
+            force_https: None,
             custom_headers: None,
             upstream_targets: None,
             sort_order: None,

@@ -61,6 +61,26 @@ pub async fn get_proxy(id: String, state: State<'_, AppState>) -> Result<ProxyRu
     proxy_repo::get_by_id(&db, &id)
 }
 
+/// Whether saving a rule would emit the synthesised port-80 HTTP -> HTTPS
+/// redirect block. The block has no row behind it, so the form cannot derive
+/// this from the rule list.
+#[tauri::command]
+pub async fn check_force_https(
+    domain: String,
+    listen_port: u16,
+    exclude_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<config_engine::http_config::ForceHttpsCheck, AppError> {
+    let db = state.get_conn()?;
+    let rules = proxy_repo::list_enabled(&db)?;
+    Ok(config_engine::http_config::check_force_https(
+        &rules,
+        &domain,
+        listen_port,
+        exclude_id.as_deref(),
+    ))
+}
+
 #[tauri::command]
 pub async fn create_proxy(
     input: CreateProxyRule,

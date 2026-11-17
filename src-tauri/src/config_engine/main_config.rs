@@ -94,6 +94,7 @@ stream {{
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::nginx_manager::repo_sidecar;
     use std::path::PathBuf;
 
     #[test]
@@ -150,23 +151,6 @@ mod tests {
         let data_dir = PathBuf::from("/tmp/test");
         let config = generate_main_config(&data_dir, "2", Capabilities::default());
         assert!(!config.contains("http2"));
-    }
-
-    /// Locate the sidecar built into this repository, which is the binary the
-    /// generated config must satisfy. Falling back to PATH would validate
-    /// against whatever nginx happens to be installed, which is a different
-    /// module set entirely.
-    fn repo_sidecar() -> Option<PathBuf> {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries");
-        std::fs::read_dir(dir)
-            .ok()?
-            .flatten()
-            .map(|entry| entry.path())
-            .find(|path| {
-                path.file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("nginx-"))
-            })
     }
 
     /// Generate a config for the given capabilities and hand it to the real

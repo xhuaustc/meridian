@@ -6,7 +6,7 @@ pub mod stream_config;
 
 use serde::Serialize;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -285,9 +285,41 @@ pub fn generate_all_configs_with_settings(
             .push(rule);
     }
 
+    // Hostnames that real rules already serve on port 80. A synthesised
+    // redirect would be a second `server_name` on that port, so it is skipped
+    // for them; `check_force_https` tells the form why.
+    let real_port_80_hosts: HashSet<&str> = http_rules
+        .iter()
+        .filter(|rule| rule.listen_port == http_config::REDIRECT_LISTEN_PORT)
+        .filter_map(|rule| rule.domain.as_deref())
+        .collect();
+
+    // Pick which generated file carries each hostname's synthesised redirect:
+    // the lowest HTTPS port for that hostname, so a hostname served on several
+    // HTTPS ports still gets exactly one `listen 80` block.
+    let mut redirect_owner: HashMap<&str, u16> = HashMap::new();
+    for ((port, domain), group_rules) in &http_groups {
+        if real_port_80_hosts.contains(domain.as_str())
+            || !group_rules
+                .iter()
+                .any(|rule| http_config::wants_https_redirect(rule))
+        {
+            continue;
+        }
+        redirect_owner
+            .entry(domain.as_str())
+            .and_modify(|owner| *owner = (*owner).min(*port))
+            .or_insert(*port);
+    }
+
     // Generate HTTP config files
     for ((port, domain), group_rules) in &http_groups {
-        let config = http_config::generate_server_block(group_rules, certs, access_lists, data_dir);
+        let mut config =
+            http_config::generate_server_block(group_rules, certs, access_lists, data_dir);
+        if redirect_owner.get(domain.as_str()) == Some(port) {
+            config.push('\n');
+            config.push_str(&http_config::generate_https_redirect_block(domain));
+        }
         let sanitized_domain = if domain.is_empty() {
             "default".to_string()
         } else {
@@ -541,5 +573,282 @@ mod preview_tests {
         drop(db);
         let _ = fs::remove_file(&db_path);
         let _ = fs::remove_dir(&data_dir);
+    }
+
+    fn http_rule(id: &str, port: u16, domain: &str) -> ProxyRule {
+        ProxyRule {
+            id: id.to_string(),
+            name: id.to_string(),
+            proxy_type: "http".to_string(),
+            enabled: true,
+            listen_port: port,
+            listen_host: "0.0.0.0".to_string(),
+            domain: Some(domain.to_string()),
+            path_prefix: None,
+            upstream_host: "127.0.0.1".to_string(),
+            upstream_port: 3000,
+            upstream_scheme: "http".to_string(),
+            tls_mode: "none".to_string(),
+            certificate_id: None,
+            access_list_id: None,
+            websocket: false,
+            keep_alive: false,
+            force_https: false,
+            custom_headers: None,
+            upstream_targets: None,
+            sort_order: 0,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            updated_at: "2024-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    fn https_rule(id: &str, port: u16, domain: &str, force_https: bool) -> ProxyRule {
+        let mut rule = http_rule(id, port, domain);
+        rule.tls_mode = "terminate".to_string();
+        rule.force_https = force_https;
+        rule
+    }
+
+    fn temp_data_dir(label: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("meridian-{}-{}", label, uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn generate_into(
+        data_dir: &Path,
+        rules: &[ProxyRule],
+        certs: &[Certificate],
+    ) -> Vec<PortConflict> {
+        generate_all_configs_with_settings(
+            data_dir,
+            rules,
+            certs,
+            &[],
+            "1",
+            crate::nginx_manager::Capabilities::default(),
+        )
+        .unwrap()
+    }
+
+    /// Every generated conf.d file that carries the synthesised redirect, with
+    /// the number of blocks it holds.
+    fn redirect_blocks_in(data_dir: &Path) -> Vec<(String, usize)> {
+        let mut found = Vec::new();
+        for entry in fs::read_dir(data_dir.join("nginx/conf.d"))
+            .unwrap()
+            .flatten()
+        {
+            let content = fs::read_to_string(entry.path()).unwrap();
+            let count = content
+                .matches("return 308 https://$host$request_uri;")
+                .count();
+            if count > 0 {
+                found.push((entry.file_name().to_string_lossy().to_string(), count));
+            }
+        }
+        found.sort();
+        found
+    }
+
+    fn conf_files_in(data_dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = fs::read_dir(data_dir.join("nginx/conf.d"))
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().to_string())
+            .filter(|name| name.ends_with(".conf"))
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn force_https_rule_synthesises_a_redirect_in_its_own_file() {
+        let data_dir = temp_data_dir("redirect");
+        let rules = vec![https_rule("tls", 443, "app.local", true)];
+        let conflicts = generate_into(&data_dir, &rules, &[]);
+
+        assert!(conflicts.is_empty(), "the redirect must not add conflicts");
+        let config = fs::read_to_string(data_dir.join("nginx/conf.d/443_app_local.conf")).unwrap();
+        assert!(config.contains("    listen 443 ssl;"));
+        assert!(config.contains(concat!(
+            "    listen 80;\n",
+            "    server_name app.local;\n",
+            "    return 308 https://$host$request_uri;\n",
+        )));
+        assert_eq!(
+            redirect_blocks_in(&data_dir),
+            vec![("443_app_local.conf".to_string(), 1)],
+            "the redirect belongs to the hostname's own file"
+        );
+        assert_eq!(
+            conf_files_in(&data_dir),
+            vec!["443_app_local.conf".to_string()]
+        );
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn force_https_skips_a_hostname_that_already_has_a_port_80_rule() {
+        let data_dir = temp_data_dir("redirect-skip");
+        let rules = vec![
+            http_rule("plain", 80, "app.local"),
+            https_rule("tls", 443, "app.local", true),
+        ];
+        assert!(generate_into(&data_dir, &rules, &[]).is_empty());
+
+        assert!(
+            redirect_blocks_in(&data_dir).is_empty(),
+            "a real port-80 server block must not be shadowed by a synthesised one"
+        );
+        let plain = fs::read_to_string(data_dir.join("nginx/conf.d/80_app_local.conf")).unwrap();
+        assert!(plain.contains("    listen 80;\n    server_name app.local;\n"));
+        assert!(plain.contains("proxy_pass"));
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn turning_force_https_off_leaves_no_redirect_residue() {
+        let data_dir = temp_data_dir("redirect-off");
+        generate_into(&data_dir, &[https_rule("tls", 443, "app.local", true)], &[]);
+        assert_eq!(redirect_blocks_in(&data_dir).len(), 1);
+
+        generate_into(
+            &data_dir,
+            &[https_rule("tls", 443, "app.local", false)],
+            &[],
+        );
+        assert!(redirect_blocks_in(&data_dir).is_empty());
+        let config = fs::read_to_string(data_dir.join("nginx/conf.d/443_app_local.conf")).unwrap();
+        assert!(!config.contains("listen 80;"));
+        assert_eq!(
+            conf_files_in(&data_dir),
+            vec!["443_app_local.conf".to_string()]
+        );
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn one_redirect_block_per_hostname_even_with_several_https_ports() {
+        let data_dir = temp_data_dir("redirect-ports");
+        let rules = vec![
+            https_rule("tls-8443", 8443, "app.local", true),
+            https_rule("tls-443", 443, "app.local", true),
+        ];
+        assert!(generate_into(&data_dir, &rules, &[]).is_empty());
+
+        assert_eq!(
+            redirect_blocks_in(&data_dir),
+            vec![("443_app_local.conf".to_string(), 1)],
+            "the lowest HTTPS port owns the redirect, so `listen 80` appears once"
+        );
+        assert_eq!(
+            conf_files_in(&data_dir),
+            vec![
+                "443_app_local.conf".to_string(),
+                "8443_app_local.conf".to_string()
+            ]
+        );
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn the_redirect_block_adds_no_rule_no_file_and_no_conflict() {
+        let data_dir = temp_data_dir("redirect-count");
+        let rules = vec![
+            https_rule("tls", 443, "app.local", true),
+            http_rule("plain", 80, "other.local"),
+        ];
+        let conflicts = generate_into(&data_dir, &rules, &[]);
+
+        assert!(conflicts.is_empty());
+        // Two rules in two groups, two files: the redirect gets none of its own.
+        assert_eq!(
+            conf_files_in(&data_dir),
+            vec![
+                "443_app_local.conf".to_string(),
+                "80_other_local.conf".to_string()
+            ]
+        );
+        assert_eq!(
+            redirect_blocks_in(&data_dir),
+            vec![("443_app_local.conf".to_string(), 1)]
+        );
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
+    /// The synthesised block must be accepted by the nginx binary we ship, not
+    /// just by our own string checks. Skips (loudly) when the sidecar has not
+    /// been built on this machine.
+    #[test]
+    fn synthesised_redirect_block_is_accepted_by_the_bundled_nginx() {
+        let Some(nginx) = crate::nginx_manager::repo_sidecar() else {
+            eprintln!(
+                "skipping: run scripts/prepare-nginx.sh to validate the synthesised redirect block against the sidecar"
+            );
+            return;
+        };
+
+        let data_dir = temp_data_dir("redirect-nginx-t");
+        let generated =
+            crate::cert_manager::generate_self_signed(&data_dir, "test", "app.local", 2).unwrap();
+        let cert = Certificate {
+            id: "cert-1".to_string(),
+            name: generated.name,
+            domain: generated.domain,
+            cert_path: generated.cert_path,
+            key_path: generated.key_path,
+            source: generated.source,
+            expires_at: generated.expires_at,
+            auto_renew: false,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            dns_credential_id: None,
+            acme_account_id: None,
+            acme_domains: None,
+            last_renew_error: None,
+            last_renew_at: None,
+            status: "ready".to_string(),
+        };
+        let mut rule = https_rule("tls", 443, "app.local", true);
+        rule.certificate_id = Some(cert.id.clone());
+        assert!(generate_into(&data_dir, &[rule], &[cert]).is_empty());
+
+        let nginx_dir = data_dir.join("nginx");
+        for dir in [
+            nginx_dir.join("temp/client_body"),
+            nginx_dir.join("temp/proxy"),
+        ] {
+            fs::create_dir_all(dir).unwrap();
+        }
+        // nginx refuses an include whose glob matches nothing.
+        fs::write(nginx_dir.join("stream.d/.keep.conf"), "# placeholder\n").unwrap();
+
+        let config_path = nginx_dir.join("nginx.conf");
+        let output = std::process::Command::new(&nginx)
+            .arg("-t")
+            .arg("-c")
+            .arg(&config_path)
+            .arg("-p")
+            .arg(&nginx_dir)
+            .output()
+            .expect("failed to run nginx -t");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success(),
+            "nginx -t rejected the config with the synthesised redirect block:\n{}",
+            stderr
+        );
+        assert!(
+            stderr.contains("test is successful"),
+            "unexpected nginx -t output: {}",
+            stderr
+        );
+
+        let config = fs::read_to_string(nginx_dir.join("conf.d/443_app_local.conf")).unwrap();
+        assert!(
+            config.contains("return 308 https://$host$request_uri;"),
+            "the validated config must be the one with the redirect block"
+        );
+        let _ = fs::remove_dir_all(&data_dir);
     }
 }

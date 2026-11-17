@@ -85,6 +85,7 @@ fn run_migrations(conn: &Connection) -> Result<(), AppError> {
             access_list_id TEXT REFERENCES access_lists(id),
             websocket INTEGER DEFAULT 0,
             keep_alive INTEGER NOT NULL DEFAULT 0,
+            force_https INTEGER NOT NULL DEFAULT 0,
             custom_headers TEXT,
             sort_order INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
@@ -207,6 +208,13 @@ fn run_migrations(conn: &Connection) -> Result<(), AppError> {
         info!("Migrated proxy_rules table with keep_alive column");
     }
 
+    if !proxy_cols.iter().any(|c| c == "force_https") {
+        conn.execute_batch(
+            "ALTER TABLE proxy_rules ADD COLUMN force_https INTEGER NOT NULL DEFAULT 0;",
+        )?;
+        info!("Migrated proxy_rules table with force_https column");
+    }
+
     info!("Database migrations complete");
     Ok(())
 }
@@ -260,6 +268,57 @@ pub fn backup_database(db_path: &Path) -> Result<String, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn migration_adds_force_https_to_an_existing_database() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        // proxy_rules as it shipped before force_https existed.
+        conn.execute_batch(
+            "CREATE TABLE proxy_rules (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                proxy_type TEXT NOT NULL CHECK(proxy_type IN ('http','stream_tcp','stream_udp')),
+                enabled INTEGER NOT NULL DEFAULT 1,
+                listen_port INTEGER NOT NULL,
+                listen_host TEXT DEFAULT '0.0.0.0',
+                domain TEXT,
+                path_prefix TEXT,
+                upstream_host TEXT NOT NULL,
+                upstream_port INTEGER NOT NULL,
+                upstream_scheme TEXT NOT NULL DEFAULT 'http',
+                tls_mode TEXT DEFAULT 'none' CHECK(tls_mode IN ('none','terminate','passthrough')),
+                certificate_id TEXT,
+                access_list_id TEXT,
+                websocket INTEGER DEFAULT 0,
+                keep_alive INTEGER NOT NULL DEFAULT 0,
+                custom_headers TEXT,
+                upstream_targets TEXT,
+                sort_order INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO proxy_rules (id, name, proxy_type, listen_port, upstream_host, upstream_port, created_at, updated_at)
+            VALUES ('legacy', 'legacy rule', 'http', 80, '127.0.0.1', 3000, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z');",
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+        // A second run must be a no-op rather than a duplicate-column error.
+        run_migrations(&conn).unwrap();
+
+        let mut stmt = conn.prepare("PRAGMA table_info(proxy_rules)").unwrap();
+        let columns: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(|result| result.ok())
+            .collect();
+        drop(stmt);
+        assert!(columns.iter().any(|column| column == "force_https"));
+
+        let rule = crate::store::proxy_repo::get_by_id(&conn, "legacy").unwrap();
+        assert!(!rule.force_https, "existing rows must not force HTTPS");
+    }
 
     #[test]
     fn backup_includes_uncheckpointed_wal_changes() {

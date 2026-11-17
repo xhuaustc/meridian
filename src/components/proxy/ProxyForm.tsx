@@ -11,10 +11,10 @@ import { useCertStore } from '../../stores/cert-store';
 import { useAccessStore } from '../../stores/access-store';
 import { useToastStore } from '../../stores/toast-store';
 import { useApiError } from '../../hooks/useApiError';
-import { checkPortConflict, checkHostnameExists, createHost, previewCreateProxy, previewUpdateProxy } from '../../lib/api';
+import { checkPortConflict, checkForceHttps, checkHostnameExists, createHost, previewCreateProxy, previewUpdateProxy } from '../../lib/api';
 import { Dialog } from '../ui/Dialog';
 import { cn } from '../../lib/utils';
-import type { ProxyRule, ProxyType, TlsMode, CreateProxyRule, UpdateProxyRule, UpstreamTarget, UpstreamScheme, ConfigPreview } from '../../types';
+import type { ProxyRule, ProxyType, TlsMode, CreateProxyRule, UpdateProxyRule, UpstreamTarget, UpstreamScheme, ConfigPreview, ForceHttpsCheck } from '../../types';
 
 type FormProxyType = 'http' | 'https' | 'tcp' | 'udp';
 
@@ -68,6 +68,8 @@ export function ProxyForm({ rule }: ProxyFormProps) {
   const [accessListId, setAccessListId] = useState(rule?.access_list_id ?? '');
   const [websocket, setWebsocket] = useState(rule?.websocket ?? false);
   const [keepAlive, setKeepAlive] = useState(rule?.keep_alive ?? false);
+  const [forceHttps, setForceHttps] = useState(rule?.force_https ?? false);
+  const [forceHttpsCheck, setForceHttpsCheck] = useState<ForceHttpsCheck | null>(null);
   const [portWarning, setPortWarning] = useState('');
   const [saving, setSaving] = useState(false);
   const [configPreview, setConfigPreview] = useState<ConfigPreview | null>(null);
@@ -118,6 +120,32 @@ export function ProxyForm({ rule }: ProxyFormProps) {
   const isStream = formType === 'tcp' || formType === 'udp';
   const showTls = formType === 'http' || formType === 'https';
   const showWebsocket = formType === 'http' || formType === 'https';
+
+  // The redirect block is synthesised at generation time and never stored as a
+  // rule, so ask the backend whether it would actually be emitted for this
+  // domain instead of promising it in the form.
+  useEffect(() => {
+    if (isStream || tlsMode !== 'terminate' || !domain.trim()) {
+      setForceHttpsCheck(null);
+      return;
+    }
+    let cancelled = false;
+    checkForceHttps(domain.trim(), parseInt(listenPort) || 0, isEdit ? rule?.id : undefined)
+      .then((result) => {
+        if (!cancelled) setForceHttpsCheck(result);
+      })
+      .catch(() => {
+        if (!cancelled) setForceHttpsCheck(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isStream, tlsMode, domain, listenPort, isEdit, rule?.id]);
+
+  const forceHttpsSkipped = forceHttps && forceHttpsCheck !== null && !forceHttpsCheck.synthesized;
+  const forceHttpsSkipMessage = forceHttpsCheck?.skipped === 'own_port_80'
+    ? t('proxyForm.forceHttpsSkippedOwnPort')
+    : t('proxyForm.forceHttpsSkipped', { name: forceHttpsCheck?.blocking_rule_name ?? '' });
 
   const checkPortConflicts = useCallback(async () => {
     if (!listenPort) return;
@@ -175,6 +203,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
       access_list_id: accessListId || null,
       websocket: showWebsocket ? websocket : false,
       keep_alive: keepAlive,
+      force_https: tlsMode === 'terminate' ? forceHttps : false,
       custom_headers: Object.keys(headersObj).length > 0 ? JSON.stringify(headersObj) : null,
       upstream_targets: validTargets.length > 0 ? JSON.stringify(validTargets) : null,
     };
@@ -585,22 +614,40 @@ export function ProxyForm({ rule }: ProxyFormProps) {
             </div>
           </div>
           {tlsMode === 'terminate' && (
-            <div className="mb-4">
-              <label className="block text-[12px] font-medium text-text-secondary mb-1">
-                {t('proxyForm.certificate')}
-              </label>
-              <Select
-                value={certificateId}
-                onChange={(e) => setCertificateId(e.target.value)}
-              >
-                <option value="">{t('proxyForm.certPlaceholder')}</option>
-                {certificates.map((cert) => (
-                  <option key={cert.id} value={cert.id}>
-                    {cert.domain} ({cert.name})
-                  </option>
-                ))}
-              </Select>
-            </div>
+            <>
+              <div className="mb-4">
+                <label className="block text-[12px] font-medium text-text-secondary mb-1">
+                  {t('proxyForm.certificate')}
+                </label>
+                <Select
+                  value={certificateId}
+                  onChange={(e) => setCertificateId(e.target.value)}
+                >
+                  <option value="">{t('proxyForm.certPlaceholder')}</option>
+                  {certificates.map((cert) => (
+                    <option key={cert.id} value={cert.id}>
+                      {cert.domain} ({cert.name})
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="mb-4 mt-6">
+                <div className="flex items-center gap-2">
+                  <Toggle checked={forceHttps} onChange={setForceHttps} />
+                  <label className="text-[12px] font-medium text-text-secondary">
+                    {t('proxyForm.forceHttps')}
+                  </label>
+                </div>
+                <p className="text-[11px] text-text-tertiary mt-1 ml-11">
+                  {t('proxyForm.forceHttpsDesc')}
+                </p>
+                {forceHttpsSkipped && (
+                  <p className="text-[11px] text-warning mt-1 ml-11">
+                    {forceHttpsSkipMessage}
+                  </p>
+                )}
+              </div>
+            </>
           )}
         </section>
       )}
