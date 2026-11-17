@@ -211,6 +211,11 @@ pub fn preview_bundle(path: &Path, passphrase: &str) -> Result<RecoveryPreview, 
 
 /// Tables a restore replaces, in row-copy order: referenced rows land before the
 /// rows pointing at them, so deletions run in the reverse order.
+/// Tables a restore deliberately does not copy yet, each waiting on its own
+/// ticket. They stay listed so the gap is visible: an unlisted, unrestored table
+/// means a restored bundle silently mixes with leftover local rows.
+const RESTORE_DEFERRED_TABLES: [&str; 1] = ["hostname_settings"];
+
 const RESTORE_TABLES: [&str; 8] = [
     "dns_credentials",
     "acme_accounts",
@@ -766,5 +771,44 @@ mod tests {
         );
         drop(db);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn every_schema_table_is_restored_or_explicitly_deferred() {
+        let dir = temp_dir("recovery-schema-tables");
+        let db_path = dir.join("meridian.db");
+        let db = store::init_database(&db_path).unwrap();
+        let tables: Vec<String> = {
+            let mut statement = db
+                .prepare(
+                    "SELECT name FROM sqlite_master
+                     WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+                     ORDER BY name",
+                )
+                .unwrap();
+            let rows = statement
+                .query_map([], |row| row.get::<_, String>(0))
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            rows
+        };
+        drop(db);
+
+        let unaccounted: Vec<&str> = tables
+            .iter()
+            .map(String::as_str)
+            .filter(|table| {
+                !RESTORE_TABLES.contains(table) && !RESTORE_DEFERRED_TABLES.contains(table)
+            })
+            .collect();
+
+        let _ = fs::remove_dir_all(&dir);
+
+        assert!(
+            unaccounted.is_empty(),
+            "schema tables are neither restored nor explicitly deferred: {unaccounted:?}; \
+             add them to RESTORE_TABLES or to RESTORE_DEFERRED_TABLES with the ticket that will"
+        );
     }
 }
