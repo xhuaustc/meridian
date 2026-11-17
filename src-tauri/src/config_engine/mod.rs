@@ -4,6 +4,9 @@ pub mod http_config;
 pub mod main_config;
 pub mod stream_config;
 
+#[cfg(test)]
+pub mod test_support;
+
 use serde::Serialize;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -517,7 +520,12 @@ mod preview_tests {
         fs::create_dir_all(&data_dir).unwrap();
         let db_path = data_dir.join("meridian.db");
         let db = crate::store::init_database(&db_path).unwrap();
-        let preview = preview_db_state(&db, &data_dir).unwrap();
+        // Pin the capabilities instead of letting the process-wide probe cache
+        // latch onto this host's module set for the rest of the test binary.
+        let preview = crate::nginx_manager::with_capabilities(
+            crate::nginx_manager::Capabilities::default(),
+            || preview_db_state(&db, &data_dir).unwrap(),
+        );
         assert!(preview
             .changes
             .iter()
@@ -541,5 +549,45 @@ mod preview_tests {
         drop(db);
         let _ = fs::remove_file(&db_path);
         let _ = fs::remove_dir(&data_dir);
+    }
+}
+
+/// Example usage of the shared harness. A later config ticket adds rule shapes
+/// here, calls the production generator, and ends with the repository sidecar
+/// judging the result instead of hand-rolling its own `nginx -t` invocation.
+#[cfg(test)]
+mod sidecar_tests {
+    use super::test_support::{self, count_directive_in_blocks, SidecarHarness};
+
+    #[test]
+    fn generated_http_and_stream_configs_are_accepted_by_the_sidecar() {
+        let Some((http_config, stream_config)) = SidecarHarness::with_configs(|harness| {
+            let rules = [
+                test_support::http_rule("rule-http-000000000001", "app.local"),
+                test_support::stream_rule("rule-stream-0000000001", 15432),
+            ];
+            harness.generate_all(&rules, &[], &[], "1", harness.capabilities());
+            (
+                harness.read("conf.d/18080_app_local.conf"),
+                harness.read("stream.d/stream_15432_stream_tcp.conf"),
+            )
+        }) else {
+            return;
+        };
+
+        assert_eq!(
+            count_directive_in_blocks(&http_config, "server", "listen"),
+            1,
+            "the generated server block must listen exactly once"
+        );
+        assert_eq!(
+            count_directive_in_blocks(&http_config, "location /", "proxy_set_header"),
+            4,
+            "the plain HTTP location must keep forwarding the four proxy headers"
+        );
+        assert_eq!(
+            count_directive_in_blocks(&stream_config, "server", "proxy_pass"),
+            1
+        );
     }
 }

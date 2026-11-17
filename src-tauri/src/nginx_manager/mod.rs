@@ -78,32 +78,84 @@ static CAPABILITIES: std::sync::OnceLock<Capabilities> = std::sync::OnceLock::ne
 
 /// Probe the bundled binary once per process and reuse the answer.
 pub fn capabilities() -> Capabilities {
-    *CAPABILITIES.get_or_init(|| {
-        let Ok(path) = get_bundled_nginx_path() else {
-            warn!("Could not locate an nginx binary to probe for capabilities");
-            return Capabilities::default();
-        };
-        match nginx_command(&path).arg("-V").output() {
-            Ok(output) => {
-                let text = format!(
-                    "{}{}",
-                    String::from_utf8_lossy(&output.stdout),
-                    String::from_utf8_lossy(&output.stderr)
-                );
-                let capabilities = parse_capabilities(&text);
-                info!(
-                    "Probed nginx capabilities: probed={}, http2={}",
-                    capabilities.probed, capabilities.http2
-                );
-                capabilities
-            }
-            Err(error) => {
-                warn!("Could not run `nginx -V`: {}", error);
-                Capabilities::default()
+    #[cfg(test)]
+    if let Some(overridden) = test_seam::overridden() {
+        return overridden;
+    }
+    *CAPABILITIES.get_or_init(probe_bundled_nginx_capabilities)
+}
+
+/// Ask the bundled binary what it supports (`nginx -V`) and parse the answer.
+fn probe_bundled_nginx_capabilities() -> Capabilities {
+    let Ok(path) = get_bundled_nginx_path() else {
+        warn!("Could not locate an nginx binary to probe for capabilities");
+        return Capabilities::default();
+    };
+    match nginx_command(&path).arg("-V").output() {
+        Ok(output) => {
+            let text = format!(
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let capabilities = parse_capabilities(&text);
+            info!(
+                "Probed nginx capabilities: probed={}, http2={}",
+                capabilities.probed, capabilities.http2
+            );
+            capabilities
+        }
+        Err(error) => {
+            warn!("Could not run `nginx -V`: {}", error);
+            Capabilities::default()
+        }
+    }
+}
+
+/// Test seam for the process-wide capability cache.
+///
+/// [`CAPABILITIES`] is a `OnceLock`: the first test that probes freezes this
+/// host's module set for the whole test binary, so a later test that needs a
+/// specific module set cannot get one. Tests route through this scoped,
+/// thread-local override instead of touching that cache.
+#[cfg(test)]
+mod test_seam {
+    use super::Capabilities;
+    use std::cell::Cell;
+
+    thread_local! {
+        /// Capabilities forced by [`with_capabilities`] on the current thread.
+        static OVERRIDDEN: Cell<Option<Capabilities>> = Cell::new(None);
+    }
+
+    /// Answer [`super::capabilities`] with `capabilities` on this thread while
+    /// `run` executes, without touching the process-wide probe cache.
+    ///
+    /// The override is scoped and thread-local rather than a global setter, so
+    /// parallel tests cannot see each other's value and a panic cannot leave an
+    /// override behind for the next test.
+    pub fn with_capabilities<T>(capabilities: Capabilities, run: impl FnOnce() -> T) -> T {
+        struct Restore(Option<Capabilities>);
+
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                OVERRIDDEN.with(|slot| slot.set(self.0));
             }
         }
-    })
+
+        let previous = OVERRIDDEN.with(|slot| slot.replace(Some(capabilities)));
+        let _restore = Restore(previous);
+        run()
+    }
+
+    /// The capabilities forced on this thread, if any.
+    pub(super) fn overridden() -> Option<Capabilities> {
+        OVERRIDDEN.with(Cell::get)
+    }
 }
+
+#[cfg(test)]
+pub use test_seam::with_capabilities;
 
 /// Spawn a background health check that emits "nginx-status-changed" event when nginx crashes.
 pub fn spawn_health_check(data_dir: PathBuf, app_handle: tauri::AppHandle) {
@@ -722,6 +774,41 @@ mod tests {
         let capabilities = parse_capabilities(V_HTTP2_NEW_DIRECTIVE_BOUNDARY);
         assert!(capabilities.probed);
         assert!(capabilities.http2);
+    }
+
+    #[test]
+    fn capabilities_answer_from_a_scoped_override_without_the_probe_cache() {
+        let forced = Capabilities {
+            probed: true,
+            http2: true,
+        };
+        with_capabilities(forced, || assert_eq!(capabilities(), forced));
+
+        let forced = Capabilities {
+            probed: true,
+            http2: false,
+        };
+        with_capabilities(forced, || assert_eq!(capabilities(), forced));
+
+        assert!(
+            super::test_seam::overridden().is_none(),
+            "the override must not leak past the closure"
+        );
+    }
+
+    #[test]
+    fn nested_capability_overrides_restore_the_outer_value() {
+        let outer = Capabilities {
+            probed: true,
+            http2: true,
+        };
+        let inner = Capabilities::default();
+
+        with_capabilities(outer, || {
+            assert_eq!(capabilities(), outer);
+            with_capabilities(inner, || assert_eq!(capabilities(), inner));
+            assert_eq!(capabilities(), outer);
+        });
     }
 
     #[test]
