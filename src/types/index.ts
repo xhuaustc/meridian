@@ -169,6 +169,11 @@ export interface NginxStatus {
   error_message: string | null;
 }
 
+export interface EngineCapabilities {
+  probed: boolean;
+  http2: boolean;
+}
+
 export interface ProxyListResponse {
   rules: ProxyRule[];
   stats: Record<string, number>;

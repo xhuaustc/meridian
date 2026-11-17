@@ -17,7 +17,7 @@ import { useAccessStore } from '../stores/access-store';
 import { useHostsStore } from '../stores/hosts-store';
 import * as api from '../lib/api';
 import { cn } from '../lib/utils';
-import type { RecoveryPreview } from '../types';
+import type { RecoveryPreview, EngineCapabilities } from '../types';
 
 export function SettingsPage() {
   const { t, i18n } = useTranslation('common');
@@ -38,6 +38,7 @@ export function SettingsPage() {
   const [logRetentionDays, setLogRetentionDays] = useState('7');
   const [workerProcesses, setWorkerProcesses] = useState('2');
   const [appVersion, setAppVersion] = useState('');
+  const [capabilities, setCapabilities] = useState<EngineCapabilities | null>(null);
 
   useEffect(() => {
     // Load app version
@@ -53,6 +54,10 @@ export function SettingsPage() {
     api.getSetting('worker_processes').then((v) => {
       if (v) setWorkerProcesses(v);
     });
+    api
+      .getEngineCapabilities()
+      .then(setCapabilities)
+      .catch(() => setCapabilities(null));
   }, []);
 
   const handleExport = async () => {
@@ -273,6 +278,24 @@ export function SettingsPage() {
               />
             )}
           </div>
+        </div>
+        <div className="mt-3 flex items-center justify-between bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3">
+          <div>
+            <div className="text-[13px] font-medium">{t('settings.http2')}</div>
+            <div className="text-[11px] text-text-tertiary mt-0.5">{t('settings.http2Desc')}</div>
+          </div>
+          <span
+            className={cn(
+              'text-[12px] font-medium',
+              capabilities?.http2 ? 'text-success' : 'text-text-tertiary',
+            )}
+          >
+            {!capabilities?.probed
+              ? t('settings.http2Unknown')
+              : capabilities.http2
+                ? t('settings.http2Enabled')
+                : t('settings.http2Unsupported')}
+          </span>
         </div>
       </section>
 

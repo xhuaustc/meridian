@@ -353,7 +353,12 @@
     "importConfirm": "Restore {{proxies}} proxies, {{certificates}} certificates, {{hosts}} hosts entries and {{credentials}} DNS credentials? Current app data will be replaced. A database backup is created first; system hosts entries need a separate sync.",
     "about": "About",
     "version": "Version",
-    "author": "Author"
+    "author": "Author",
+    "http2": "HTTP/2",
+    "http2Desc": "Always on when the bundled engine supports it; there is no switch",
+    "http2Enabled": "Enabled",
+    "http2Unsupported": "Not in this build",
+    "http2Unknown": "Could not probe"
   },
   "monitor": {
     "title": "Monitor",

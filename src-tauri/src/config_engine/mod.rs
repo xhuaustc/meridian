@@ -141,6 +141,7 @@ pub fn preview_db_state(
             &data.certs,
             &data.access_lists,
             &data.worker_processes,
+            crate::nginx_manager::capabilities(),
         )?;
         let staged_files = generated_files(&staged)?;
         let live_files = generated_files(data_dir)?;
@@ -227,6 +228,7 @@ pub fn apply_db_state(
         &data.certs,
         &data.access_lists,
         &data.worker_processes,
+        crate::nginx_manager::capabilities(),
     )
 }
 
@@ -238,6 +240,7 @@ pub fn generate_all_configs_with_settings(
     certs: &[Certificate],
     access_lists: &[(AccessList, Vec<AccessRule>)],
     worker_processes: &str,
+    capabilities: crate::nginx_manager::Capabilities,
 ) -> Result<Vec<PortConflict>, AppError> {
     let nginx_dir = data_dir.join("nginx");
     let conf_d = nginx_dir.join("conf.d");
@@ -257,7 +260,7 @@ pub fn generate_all_configs_with_settings(
     let conflicts = conflict::detect_conflicts(rules);
 
     // Write main nginx.conf
-    let main_conf = main_config::generate_main_config(data_dir, worker_processes);
+    let main_conf = main_config::generate_main_config(data_dir, worker_processes, capabilities);
     write_config(&nginx_dir.join("nginx.conf"), &main_conf)?;
     info!("Wrote nginx.conf");
 
@@ -423,6 +426,7 @@ pub fn apply_and_reload(
     certs: &[Certificate],
     access_lists: &[(AccessList, Vec<AccessRule>)],
     worker_processes: &str,
+    capabilities: crate::nginx_manager::Capabilities,
 ) -> Result<Vec<PortConflict>, AppError> {
     // Step 1: backup existing configs
     let backup_dir = backup_configs(data_dir)?;
@@ -434,6 +438,7 @@ pub fn apply_and_reload(
         certs,
         access_lists,
         worker_processes,
+        capabilities,
     ) {
         Ok(c) => c,
         Err(e) => {

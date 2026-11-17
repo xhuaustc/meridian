@@ -353,7 +353,12 @@
     "importConfirm": "将还原 {{proxies}} 条代理、{{certificates}} 张证书、{{hosts}} 条 hosts 记录和 {{credentials}} 条 DNS 凭据。现有应用数据将被替换；操作前会备份数据库，系统 hosts 需另行同步。",
     "about": "关于",
     "version": "版本",
-    "author": "作者"
+    "author": "作者",
+    "http2": "HTTP/2",
+    "http2Desc": "内置引擎支持时始终开启，不提供开关",
+    "http2Enabled": "已启用",
+    "http2Unsupported": "当前构建不支持",
+    "http2Unknown": "无法探测"
   },
   "monitor": {
     "title": "监控",

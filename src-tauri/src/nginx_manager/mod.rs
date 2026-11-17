@@ -29,6 +29,63 @@ fn nginx_command(nginx_path: &Path) -> Command {
 
 static WAS_RUNNING: AtomicBool = AtomicBool::new(false);
 
+/// What the nginx build we ship can actually do.
+///
+/// The generator reads this instead of assuming a module set: the Unix sidecar is
+/// compiled by us, but Windows ships nginx.org's binary, whose modules we do not
+/// control.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+pub struct Capabilities {
+    /// The probe ran and produced a configure line we could read.
+    pub probed: bool,
+    /// The build includes the HTTP/2 module.
+    pub http2: bool,
+}
+
+/// Read the modules Meridian cares about out of `nginx -V` output.
+///
+/// nginx prints its configure line to stderr; callers pass stdout and stderr
+/// merged. Without a configure line there is nothing to trust, so the result is
+/// reported as "not probed".
+pub fn parse_capabilities(version_output: &str) -> Capabilities {
+    let probed = version_output.contains("configure arguments");
+    Capabilities {
+        probed,
+        http2: probed && version_output.contains("--with-http_v2_module"),
+    }
+}
+
+static CAPABILITIES: std::sync::OnceLock<Capabilities> = std::sync::OnceLock::new();
+
+/// Probe the bundled binary once per process and reuse the answer.
+pub fn capabilities() -> Capabilities {
+    *CAPABILITIES.get_or_init(|| {
+        let Ok(path) = get_bundled_nginx_path() else {
+            warn!("Could not locate an nginx binary to probe for capabilities");
+            return Capabilities::default();
+        };
+        match nginx_command(&path).arg("-V").output() {
+            Ok(output) => {
+                let text = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let capabilities = parse_capabilities(&text);
+                info!(
+                    "Probed nginx capabilities: probed={}, http2={}",
+                    capabilities.probed, capabilities.http2
+                );
+                capabilities
+            }
+            Err(error) => {
+                warn!("Could not run `nginx -V`: {}", error);
+                Capabilities::default()
+            }
+        }
+    })
+}
+
 /// Spawn a background health check that emits "nginx-status-changed" event when nginx crashes.
 pub fn spawn_health_check(data_dir: PathBuf, app_handle: tauri::AppHandle) {
     std::thread::spawn(move || loop {
@@ -603,6 +660,31 @@ fn parse_etime(etime: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const V_WITH_HTTP2: &str = "nginx version: nginx/1.26.2\nbuilt by clang 21.0.0\nconfigure arguments: --prefix=. --with-http_ssl_module --with-http_v2_module --with-stream\n";
+
+    const V_WITHOUT_HTTP2: &str = "nginx version: nginx/1.26.2\nbuilt by gcc\nconfigure arguments: --prefix=. --with-http_ssl_module\n";
+
+    #[test]
+    fn reports_http2_when_the_build_was_configured_with_it() {
+        let capabilities = parse_capabilities(V_WITH_HTTP2);
+        assert!(capabilities.probed);
+        assert!(capabilities.http2);
+    }
+
+    #[test]
+    fn reports_http2_absent_when_the_module_was_not_configured() {
+        let capabilities = parse_capabilities(V_WITHOUT_HTTP2);
+        assert!(capabilities.probed);
+        assert!(!capabilities.http2);
+    }
+
+    #[test]
+    fn reports_not_probed_when_the_output_has_no_configure_line() {
+        let capabilities = parse_capabilities("nginx: command not found");
+        assert!(!capabilities.probed);
+        assert!(!capabilities.http2);
+    }
     use std::time::Duration;
 
     #[test]

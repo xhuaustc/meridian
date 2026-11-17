@@ -14,6 +14,7 @@ import type {
   AppSetting,
   PortConflict,
   NginxStatus,
+  EngineCapabilities,
   LogChunk,
   RecoveryPreview,
   ConfigPreview,
@@ -173,6 +174,9 @@ export const reorderAccessRules = (accessListId: string, ruleIds: string[]) =>
 
 // --- Engine ---
 export const getEngineStatus = () => invoke<NginxStatus>('get_engine_status');
+
+export const getEngineCapabilities = () =>
+  invoke<EngineCapabilities>('get_engine_capabilities');
 
 export const startEngine = () => invoke<void>('start_engine');
 

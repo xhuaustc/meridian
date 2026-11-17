@@ -13,6 +13,11 @@ pub async fn get_engine_status(state: State<'_, AppState>) -> Result<NginxStatus
 }
 
 #[tauri::command]
+pub async fn get_engine_capabilities() -> Result<nginx_manager::Capabilities, AppError> {
+    Ok(nginx_manager::capabilities())
+}
+
+#[tauri::command]
 pub async fn start_engine(state: State<'_, AppState>) -> Result<(), AppError> {
     // Generate configs first
     apply_config_inner(&state)?;

@@ -427,6 +427,7 @@ pub fn run() {
                         &certs,
                         &access_lists,
                         &worker_processes,
+                        nginx_manager::capabilities(),
                     );
                 }
             }
@@ -564,6 +565,7 @@ pub fn run() {
             commands::hosts::get_hosts_sync_status,
             // Engine commands
             commands::engine::get_engine_status,
+            commands::engine::get_engine_capabilities,
             commands::engine::start_engine,
             commands::engine::stop_engine,
             commands::engine::reload_engine,
