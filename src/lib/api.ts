@@ -20,6 +20,7 @@ import type {
   ConfigPreview,
   ForceHttpsCheck,
   RequestParamCatalog,
+  RequestParamKey,
   ProxyMetrics,
   HostEntry,
   HostsSyncStatus,
@@ -78,6 +79,10 @@ export const checkForceHttps = (
 /** The request-parameter defaults an inheriting rule shows, plus the presets. */
 export const getRequestParamDefaults = () =>
   invoke<RequestParamCatalog>('get_request_param_defaults');
+
+/** Store one global default and regenerate the configs that inherit it. */
+export const setRequestParamDefault = (directive: RequestParamKey, value: string) =>
+  invoke<RequestParamCatalog>('set_request_param_default', { directive, value });
 
 // --- Certificates ---
 export const listCertificates = () => invoke<Certificate[]>('list_certificates');

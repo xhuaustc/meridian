@@ -367,6 +367,8 @@
     "workerProcesses": "Worker processes",
     "workerProcessesDesc": "Number of concurrent worker processes for handling connections",
     "workerProcessesAuto": "Auto",
+    "requestDefaults": "Request Parameter Defaults",
+    "requestDefaultsDesc": "Used by every rule that inherits a value. Rules with their own value keep it.",
     "logRetention": "Log Retention",
     "logRetentionDays": "Retain logs for",
     "logRetentionDaysDesc": "Log files older than this will be cleaned up on startup",

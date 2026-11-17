@@ -93,6 +93,40 @@ pub fn get_request_param_defaults(
     request_params::catalog(&db)
 }
 
+/// Store one global request-parameter default and regenerate the configs, so
+/// every rule that inherits it is rewritten while rules carrying their own value
+/// stay as they are. Returns the refreshed catalogue, so the settings page and
+/// the rule form both show the value now in force.
+#[tauri::command]
+pub async fn set_request_param_default(
+    directive: String,
+    value: String,
+    state: State<'_, AppState>,
+) -> Result<request_params::RequestParamCatalog, AppError> {
+    let param = request_params::RequestParam::from_directive(&directive).ok_or_else(|| {
+        AppError::Validation(format!(
+            "Request parameter '{directive}' is not one of the six request parameters"
+        ))
+    })?;
+
+    let mut db = state.get_conn()?;
+    let tx = db.transaction()?;
+    request_params::save_default(&tx, param, &value)?;
+    match config_engine::apply_db_state(&tx, &state.data_dir) {
+        Ok(_) => {
+            if let Err(error) = tx.commit() {
+                let _ = config_engine::apply_db_state(&db, &state.data_dir);
+                return Err(AppError::Database(error));
+            }
+        }
+        Err(error) => {
+            let _ = tx.rollback();
+            return Err(error);
+        }
+    }
+    request_params::catalog(&db)
+}
+
 #[tauri::command]
 pub async fn create_proxy(
     input: CreateProxyRule,

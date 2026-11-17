@@ -537,6 +537,7 @@ pub fn run() {
             commands::proxy::batch_delete_proxies,
             commands::proxy::check_force_https,
             commands::proxy::get_request_param_defaults,
+            commands::proxy::set_request_param_default,
             // Certificate commands
             commands::cert::list_certificates,
             commands::cert::get_certificate,

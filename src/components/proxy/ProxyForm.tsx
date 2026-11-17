@@ -14,6 +14,7 @@ import { useApiError } from '../../hooks/useApiError';
 import { checkPortConflict, checkForceHttps, checkHostnameExists, createHost, previewCreateProxy, previewUpdateProxy, getRequestParamDefaults } from '../../lib/api';
 import { Dialog } from '../ui/Dialog';
 import { cn } from '../../lib/utils';
+import { REQUEST_PARAM_HINT_KEYS, REQUEST_PARAM_KEYS, REQUEST_PARAM_LABEL_KEYS, isValidRequestParamValue } from '../../lib/requestParams';
 import type { ProxyRule, ProxyType, TlsMode, CreateProxyRule, UpdateProxyRule, UpstreamTarget, UpstreamScheme, ConfigPreview, ForceHttpsCheck, RequestParamCatalog, RequestParamInfo, RequestParamKey } from '../../types';
 
 type FormProxyType = 'http' | 'https' | 'tcp' | 'udp';
@@ -38,16 +39,6 @@ function fromFormType(ft: FormProxyType): { proxy_type: ProxyType; defaultTls: T
   }
 }
 
-/** The six request parameters, in the order the backend lists them. */
-const REQUEST_PARAM_KEYS: RequestParamKey[] = [
-  'client_max_body_size',
-  'client_body_timeout',
-  'proxy_connect_timeout',
-  'proxy_read_timeout',
-  'proxy_send_timeout',
-  'proxy_buffering',
-];
-
 type RequestParamMode = 'inherit' | 'custom' | 'unlimited';
 
 const REQUEST_PARAM_MODES: { value: RequestParamMode; labelKey: string }[] = [
@@ -55,24 +46,6 @@ const REQUEST_PARAM_MODES: { value: RequestParamMode; labelKey: string }[] = [
   { value: 'custom', labelKey: 'proxyForm.requestParamCustom' },
   { value: 'unlimited', labelKey: 'proxyForm.requestParamUnlimited' },
 ];
-
-const REQUEST_PARAM_LABEL_KEYS: Record<RequestParamKey, string> = {
-  client_max_body_size: 'proxyForm.paramBodySize',
-  client_body_timeout: 'proxyForm.paramBodyReadTimeout',
-  proxy_connect_timeout: 'proxyForm.paramConnectTimeout',
-  proxy_read_timeout: 'proxyForm.paramReadTimeout',
-  proxy_send_timeout: 'proxyForm.paramSendTimeout',
-  proxy_buffering: 'proxyForm.paramBuffering',
-};
-
-const REQUEST_PARAM_PLACEHOLDER_KEYS: Record<RequestParamKey, string> = {
-  client_max_body_size: 'proxyForm.requestParamUnitSize',
-  client_body_timeout: 'proxyForm.requestParamUnitTime',
-  proxy_connect_timeout: 'proxyForm.requestParamUnitTime',
-  proxy_read_timeout: 'proxyForm.requestParamUnitTime',
-  proxy_send_timeout: 'proxyForm.requestParamUnitTime',
-  proxy_buffering: 'proxyForm.requestParamUnitToggle',
-};
 
 const PRESET_LABEL_KEYS: Record<string, string> = {
   large_upload: 'proxyForm.presetLargeUpload',
@@ -89,17 +62,6 @@ const FALLBACK_REQUEST_PARAMS: RequestParamInfo[] = REQUEST_PARAM_KEYS.map((dire
   kind: directive === 'client_max_body_size' ? 'size' : directive === 'proxy_buffering' ? 'toggle' : 'duration',
   supports_unlimited: directive !== 'proxy_buffering',
 }));
-
-/**
- * Mirrors the Rust unit rules so a bad value is caught before saving. The
- * backend validates every value again; this is only the fast path.
- */
-function isValidRequestParamValue(directive: RequestParamKey, value: string): boolean {
-  if (!value) return false;
-  if (directive === 'proxy_buffering') return value === 'on' || value === 'off';
-  if (directive === 'client_max_body_size') return /^\d+[kmg]$/i.test(value);
-  return /^\d+(ms|s|m|h)$/.test(value);
-}
 
 /** `null` (or a lost field) inherits; `0` is unlimited where nginx accepts it. */
 function toRequestParamMode(directive: RequestParamKey, stored: string | null | undefined): RequestParamMode {
@@ -329,7 +291,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
       ? t('proxyForm.requestParamInvalidToggle', { field })
       : t('proxyForm.requestParamInvalidUnit', {
           field,
-          example: t(REQUEST_PARAM_PLACEHOLDER_KEYS[directive]),
+          example: t(REQUEST_PARAM_HINT_KEYS[directive]),
         });
   };
 
@@ -951,7 +913,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
                         <Input
                           value={row.value}
                           onChange={(e) => setRequestParamValue(info.directive, e.target.value)}
-                          placeholder={t(REQUEST_PARAM_PLACEHOLDER_KEYS[info.directive])}
+                          placeholder={t(REQUEST_PARAM_HINT_KEYS[info.directive])}
                           className={cn('text-right', isInvalid && 'border-error')}
                         />
                       ) : (

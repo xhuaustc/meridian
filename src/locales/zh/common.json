@@ -367,6 +367,8 @@
     "workerProcesses": "工作进程数",
     "workerProcessesDesc": "处理连接的并发工作进程数量",
     "workerProcessesAuto": "自动",
+    "requestDefaults": "请求参数默认值",
+    "requestDefaultsDesc": "所有继承的规则都使用这些值；规则自带的值保持不变。",
     "logRetention": "日志保留",
     "logRetentionDays": "日志保留时间",
     "logRetentionDaysDesc": "超过此时间的日志文件将在启动时自动清理",
