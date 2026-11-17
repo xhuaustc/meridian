@@ -34,3 +34,4 @@ src-tauri/binaries/nginx-*
 
 # Git worktrees
 .worktrees/
+/.worktrees/
