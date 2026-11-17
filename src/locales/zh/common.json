@@ -407,6 +407,8 @@
     "exportSuccess": "加密恢复包已创建",
     "importSuccess": "恢复完成。原数据库备份：{{path}}。请另行同步系统 hosts 文件。",
     "importConfirm": "将还原 {{proxies}} 条代理、{{certificates}} 张证书、{{hosts}} 条 hosts 记录和 {{credentials}} 条 DNS 凭据。现有应用数据将被替换；操作前会备份数据库，系统 hosts 需另行同步。",
+    "importSuccessOlderFormat": "恢复完成（旧格式恢复包，已按当前版本导入）。原数据库备份：{{path}}。请另行同步系统 hosts 文件。",
+    "importOlderFormatNote": "此恢复包为旧格式，将按当前版本导入；新增的数据结构会回落到默认值。",
     "about": "关于",
     "version": "版本",
     "author": "作者",

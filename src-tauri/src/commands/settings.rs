@@ -2,7 +2,7 @@ use tauri::State;
 
 use crate::config_engine;
 use crate::error::AppError;
-use crate::recovery::{self, RecoveryPreview};
+use crate::recovery::{self, RecoveryBundleInfo, RecoveryPreview};
 use crate::store::models::AppSetting;
 use crate::store::settings_repo;
 use crate::AppState;
@@ -61,7 +61,7 @@ pub async fn create_recovery_bundle(
 pub async fn preview_recovery_bundle(
     file_path: String,
     passphrase: String,
-) -> Result<RecoveryPreview, AppError> {
+) -> Result<RecoveryBundleInfo, AppError> {
     recovery::preview_bundle(std::path::Path::new(&file_path), &passphrase)
 }
 

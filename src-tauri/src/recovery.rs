@@ -19,7 +19,18 @@ const SALT_LEN: usize = 16;
 const NONCE_LEN: usize = 12;
 const MAX_BUNDLE_BYTES: u64 = 512 * 1024 * 1024;
 
-#[derive(Clone, Serialize, Deserialize)]
+/// Structure version this build writes. It tracks the bundle envelope and
+/// manifest layout, not the database schema: adding a table or a column to the
+/// database must not bump it, because a reader only needs to know whether it
+/// understands the bundle's shape.
+const BUNDLE_VERSION: u32 = 2;
+
+/// Structure versions this build reads. Version 1 bundles were written before
+/// `hostname_settings` existed and without the request-parameter columns on
+/// `proxy_rules`; restoring one leaves those at their schema defaults.
+const READABLE_BUNDLE_VERSIONS: [u32; 2] = [1, BUNDLE_VERSION];
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RecoveryPreview {
     pub exported_at: String,
     pub proxy_count: i64,
@@ -28,7 +39,19 @@ pub struct RecoveryPreview {
     pub dns_credential_count: i64,
 }
 
-#[derive(Serialize, Deserialize)]
+/// What a reader learns from a bundle: the manifest counts, the structure
+/// version the bundle was written in, and the version this build writes.
+/// `version < current_version` means the bundle came from an older build and is
+/// imported at the current version.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecoveryBundleInfo {
+    #[serde(flatten)]
+    pub preview: RecoveryPreview,
+    pub version: u32,
+    pub current_version: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct CertMaterial {
     id: String,
     cert: String,
@@ -92,7 +115,10 @@ fn encrypt_bundle(bundle: &RecoveryBundle, passphrase: &str) -> Result<Vec<u8>, 
     Ok(output)
 }
 
-fn read_bundle(path: &Path, passphrase: &str) -> Result<RecoveryBundle, AppError> {
+/// Decrypt a bundle file and return its plaintext JSON payload. The version
+/// gate lives in `read_bundle`, not here, so a test can feed a payload to a
+/// reader shaped like an older build.
+fn decrypt_bundle(path: &Path, passphrase: &str) -> Result<Vec<u8>, AppError> {
     let mut input = Vec::new();
     File::open(path)?
         .take(MAX_BUNDLE_BYTES + 1)
@@ -117,9 +143,22 @@ fn read_bundle(path: &Path, passphrase: &str) -> Result<RecoveryBundle, AppError
             &mut input[cipher_start..],
         )
         .map_err(|_| recovery_error("Wrong passphrase or damaged recovery bundle"))?;
-    let bundle: RecoveryBundle = serde_json::from_slice(plaintext)?;
-    if bundle.version != 1 {
-        return Err(recovery_error("Unsupported recovery bundle version"));
+    Ok(plaintext.to_vec())
+}
+
+fn read_bundle(path: &Path, passphrase: &str) -> Result<RecoveryBundle, AppError> {
+    let plaintext = decrypt_bundle(path, passphrase)?;
+    let bundle: RecoveryBundle = serde_json::from_slice(&plaintext)?;
+    if !READABLE_BUNDLE_VERSIONS.contains(&bundle.version) {
+        let readable = READABLE_BUNDLE_VERSIONS
+            .iter()
+            .map(u32::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(recovery_error(&format!(
+            "Unsupported recovery bundle version {} (this build reads versions {})",
+            bundle.version, readable
+        )));
     }
     Ok(bundle)
 }
@@ -182,7 +221,7 @@ pub fn create_bundle(
             });
         }
         let bundle = RecoveryBundle {
-            version: 1,
+            version: BUNDLE_VERSION,
             preview: preview.clone(),
             database: base64::engine::general_purpose::STANDARD.encode(fs::read(&snapshot_path)?),
             certificates,
@@ -205,19 +244,18 @@ pub fn create_bundle(
     result
 }
 
-pub fn preview_bundle(path: &Path, passphrase: &str) -> Result<RecoveryPreview, AppError> {
-    Ok(read_bundle(path, passphrase)?.preview)
+pub fn preview_bundle(path: &Path, passphrase: &str) -> Result<RecoveryBundleInfo, AppError> {
+    let bundle = read_bundle(path, passphrase)?;
+    Ok(RecoveryBundleInfo {
+        preview: bundle.preview,
+        version: bundle.version,
+        current_version: BUNDLE_VERSION,
+    })
 }
 
 /// Tables a restore replaces, in row-copy order: referenced rows land before the
 /// rows pointing at them, so deletions run in the reverse order.
-/// Tables a restore deliberately does not copy yet, each waiting on its own
-/// ticket. They stay listed so the gap is visible: an unlisted, unrestored table
-/// means a restored bundle silently mixes with leftover local rows.
-#[cfg_attr(not(test), allow(dead_code))]
-const RESTORE_DEFERRED_TABLES: [&str; 1] = ["hostname_settings"];
-
-const RESTORE_TABLES: [&str; 8] = [
+const RESTORE_TABLES: [&str; 9] = [
     "dns_credentials",
     "acme_accounts",
     "access_lists",
@@ -225,8 +263,17 @@ const RESTORE_TABLES: [&str; 8] = [
     "access_rules",
     "proxy_rules",
     "host_entries",
+    "hostname_settings",
     "app_settings",
 ];
+
+/// Tables a restore deliberately does not copy yet, each waiting on its own
+/// ticket. They stay listed so the gap is visible: an unlisted, unrestored table
+/// means a restored bundle silently mixes with leftover local rows. Nothing is
+/// deferred today; a table added to the schema without a restore path belongs
+/// here with the ticket that will close the gap.
+#[cfg_attr(not(test), allow(dead_code))]
+const RESTORE_DEFERRED_TABLES: [&str; 0] = [];
 
 /// Quote an SQL identifier for interpolation. Values are never interpolated.
 fn quote_identifier(identifier: &str) -> String {
@@ -263,20 +310,21 @@ fn table_columns(
 /// what a future schema change does to a restore: a column added to the schema
 /// after a bundle was written is absent from the bundle, so it is left out of the
 /// `INSERT` and keeps its schema default. A column removed from the schema is
-/// likewise left behind in the bundle.
+/// likewise left behind in the bundle. A table the bundle predates is cleared
+/// and left empty, which is the same default state a fresh database has.
 fn replace_tables_from_restored(conn: &Connection) -> Result<(), AppError> {
     for table in RESTORE_TABLES.iter().rev() {
         conn.execute(&format!("DELETE FROM {}", quote_identifier(table)), [])?;
     }
     for table in RESTORE_TABLES {
-        let current_columns = table_columns(conn, None, table)?;
         let bundled_columns = table_columns(conn, Some("restored"), table)?;
         if bundled_columns.is_empty() {
-            return Err(recovery_error(&format!(
-                "Recovery database is missing table {}",
-                table
-            )));
+            // `PRAGMA table_info` returns no rows for a missing table, so this
+            // is a bundle written before the table existed. The target rows are
+            // already deleted, leaving the table empty and therefore defaulted.
+            continue;
         }
+        let current_columns = table_columns(conn, None, table)?;
         let copied_columns = current_columns
             .iter()
             .filter(|column| bundled_columns.contains(*column))
@@ -465,6 +513,74 @@ mod tests {
         .unwrap();
     }
 
+    /// A database shaped like a version 1 bundle's: no `hostname_settings`
+    /// table, and a `proxy_rules` table without the request-parameter columns.
+    fn version_one_database(path: &Path) {
+        let db = store::init_database(path).unwrap();
+        let mut drops = String::from("DROP TABLE hostname_settings;");
+        for column in store::REQUEST_PARAM_COLUMNS {
+            drops.push_str(&format!("ALTER TABLE proxy_rules DROP COLUMN {};", column));
+        }
+        drops.push_str(
+            "INSERT INTO proxy_rules
+                 (id, name, proxy_type, listen_port, upstream_host, upstream_port, created_at, updated_at)
+             VALUES
+                 ('v1-rule', 'v1 rule', 'http', 8080, '127.0.0.1', 9000, 'now', 'now');",
+        );
+        db.execute_batch(&drops).unwrap();
+    }
+
+    /// Write a bundle at `version` carrying the database at `db_path`, the way
+    /// a build of that era would have written it. The structure version is
+    /// independent of the database schema the snapshot happens to have.
+    fn write_bundle_with_version(db_path: &Path, bundle_path: &Path, version: u32) {
+        let snapshot_path = store::backup_database(db_path).unwrap();
+        let snapshot = Connection::open(&snapshot_path).unwrap();
+        let preview = RecoveryPreview {
+            exported_at: chrono::Utc::now().to_rfc3339(),
+            proxy_count: count(&snapshot, "proxy_rules").unwrap(),
+            certificate_count: count(&snapshot, "certificates").unwrap(),
+            host_count: count(&snapshot, "host_entries").unwrap(),
+            dns_credential_count: count(&snapshot, "dns_credentials").unwrap(),
+        };
+        drop(snapshot);
+        let database = fs::read(&snapshot_path).unwrap();
+        let _ = fs::remove_file(&snapshot_path);
+        let bundle = RecoveryBundle {
+            version,
+            preview,
+            database: base64::engine::general_purpose::STANDARD.encode(database),
+            certificates: Vec::new(),
+        };
+        fs::write(bundle_path, encrypt_bundle(&bundle, PASSPHRASE).unwrap()).unwrap();
+    }
+
+    /// The payload shape the version 1 reader knew, plus that reader's version
+    /// gate. A bundle this struct cannot deserialize is a bundle the old build
+    /// could not even have reached its version check with.
+    #[derive(Debug, Deserialize)]
+    struct VersionOneReaderBundle {
+        version: u32,
+        #[allow(dead_code)]
+        preview: RecoveryPreview,
+        #[allow(dead_code)]
+        database: String,
+        #[allow(dead_code)]
+        certificates: Vec<CertMaterial>,
+    }
+
+    fn read_as_version_one_reader(
+        path: &Path,
+        passphrase: &str,
+    ) -> Result<VersionOneReaderBundle, AppError> {
+        let plaintext = decrypt_bundle(path, passphrase)?;
+        let bundle: VersionOneReaderBundle = serde_json::from_slice(&plaintext)?;
+        if bundle.version != 1 {
+            return Err(recovery_error("Unsupported recovery bundle version"));
+        }
+        Ok(bundle)
+    }
+
     /// Decode the database a bundle carries into a standalone file.
     fn unpack_bundle_database(bundle_path: &Path, dir: &Path) -> PathBuf {
         let bundle = read_bundle(bundle_path, PASSPHRASE).unwrap();
@@ -504,10 +620,10 @@ mod tests {
         assert!(file.starts_with(MAGIC));
         assert!(!file.windows("local.test".len()).any(|w| w == b"local.test"));
         assert!(preview_bundle(&bundle_path, "wrong password long enough").is_err());
-        assert_eq!(
-            preview_bundle(&bundle_path, PASSPHRASE).unwrap().host_count,
-            1
-        );
+        let info = preview_bundle(&bundle_path, PASSPHRASE).unwrap();
+        assert_eq!(info.preview.host_count, 1);
+        assert_eq!(info.version, BUNDLE_VERSION);
+        assert_eq!(info.current_version, BUNDLE_VERSION);
         let mut tampered = file;
         let final_byte = tampered.last_mut().unwrap();
         *final_byte ^= 1;
@@ -732,6 +848,216 @@ mod tests {
     }
 
     #[test]
+    fn a_version_one_bundle_restores_new_columns_and_tables_at_their_defaults() {
+        let dir = temp_dir("recovery-v1-copy");
+        let legacy_path = dir.join("legacy.db");
+        version_one_database(&legacy_path);
+        let bundle_path = dir.join("legacy.meridian");
+        write_bundle_with_version(&legacy_path, &bundle_path, 1);
+
+        // The current reader accepts the old structure and says so.
+        let info = preview_bundle(&bundle_path, PASSPHRASE).unwrap();
+        assert_eq!(info.version, 1);
+        assert_eq!(info.current_version, BUNDLE_VERSION);
+
+        let import_path = unpack_bundle_database(&bundle_path, &dir);
+        let live_path = dir.join("live.db");
+        let live = store::init_database(&live_path).unwrap();
+        // A row the old bundle could not carry: it must not survive the restore.
+        live.execute(
+            "INSERT INTO hostname_settings (hostname, created_at, updated_at)
+             VALUES ('stale.test', 'now', 'now')",
+            [],
+        )
+        .unwrap();
+        copy_bundle_into(&live, &import_path);
+
+        let (name, listen_port): (String, i64) = live
+            .query_row("SELECT name, listen_port FROM proxy_rules", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(name, "v1 rule");
+        assert_eq!(listen_port, 8080);
+        for column in store::REQUEST_PARAM_COLUMNS {
+            let value: Option<String> = live
+                .query_row(&format!("SELECT {} FROM proxy_rules", column), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert!(
+                value.is_none(),
+                "{column} must come back as inherit (NULL), got {value:?}"
+            );
+        }
+        assert_eq!(count(&live, "hostname_settings").unwrap(), 0);
+
+        drop(live);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restore_bundle_imports_a_version_one_bundle_at_the_current_version() {
+        if !nginx_sidecar_available() {
+            return;
+        }
+        let dir = temp_dir("recovery-v1-restore");
+        let legacy_path = dir.join("legacy.db");
+        version_one_database(&legacy_path);
+        let bundle_path = dir.join("legacy.meridian");
+        write_bundle_with_version(&legacy_path, &bundle_path, 1);
+
+        let live_path = dir.join("live.db");
+        let mut live = store::init_database(&live_path).unwrap();
+        live.execute(
+            "INSERT INTO hostname_settings (hostname, created_at, updated_at)
+             VALUES ('stale.test', 'now', 'now')",
+            [],
+        )
+        .unwrap();
+        restore_bundle(&mut live, &live_path, &dir, &bundle_path, PASSPHRASE).unwrap();
+
+        let (name, scheme): (String, String) = live
+            .query_row("SELECT name, upstream_scheme FROM proxy_rules", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(name, "v1 rule");
+        assert_eq!(scheme, "http");
+        let inherit: Option<String> = live
+            .query_row("SELECT client_max_body_size FROM proxy_rules", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert!(inherit.is_none());
+        assert_eq!(count(&live, "hostname_settings").unwrap(), 0);
+        drop(live);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_version_two_bundle_overwrites_hostname_settings_rows() {
+        let dir = temp_dir("recovery-hostname-settings");
+        let source_path = dir.join("source.db");
+        let source = store::init_database(&source_path).unwrap();
+        source
+            .execute_batch(
+                "INSERT INTO hostname_settings
+                     (hostname, hsts_enabled, hsts_max_age, hsts_include_subdomains,
+                      sec_nosniff, sec_referrer_policy, sec_frame_options, created_at, updated_at)
+                 VALUES
+                     ('app.test', 1, 3600, 1, 0, 1, 0, 'now', 'now');",
+            )
+            .unwrap();
+        drop(source);
+        let bundle_path = dir.join("current.meridian");
+        create_bundle(&source_path, &bundle_path, PASSPHRASE).unwrap();
+        assert_eq!(
+            read_bundle(&bundle_path, PASSPHRASE).unwrap().version,
+            BUNDLE_VERSION
+        );
+
+        let live_path = dir.join("live.db");
+        let live = store::init_database(&live_path).unwrap();
+        live.execute_batch(
+            "INSERT INTO hostname_settings (hostname, created_at, updated_at)
+             VALUES ('stale.test', 'now', 'now');
+             INSERT INTO hostname_settings
+                 (hostname, hsts_enabled, hsts_max_age, hsts_include_subdomains,
+                  sec_nosniff, sec_referrer_policy, sec_frame_options, created_at, updated_at)
+             VALUES
+                 ('app.test', 0, 300, 0, 1, 1, 1, 'now', 'now');",
+        )
+        .unwrap();
+        copy_bundle_into(&live, unpack_bundle_database(&bundle_path, &dir).as_path());
+
+        let rows: Vec<(String, i64, i64, i64, i64, i64, i64)> = {
+            let mut statement = live
+                .prepare(
+                    "SELECT hostname, hsts_enabled, hsts_max_age, hsts_include_subdomains,
+                            sec_nosniff, sec_referrer_policy, sec_frame_options
+                     FROM hostname_settings ORDER BY hostname",
+                )
+                .unwrap();
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        };
+        assert_eq!(rows, vec![("app.test".to_string(), 1, 3600, 1, 0, 1, 0)]);
+        drop(live);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_version_two_bundle_reaches_the_old_reader_version_gate_not_a_database_error() {
+        let dir = temp_dir("recovery-old-reader");
+        let db_path = dir.join("meridian.db");
+        let db = store::init_database(&db_path).unwrap();
+        db.execute(
+            "INSERT INTO host_entries (id, ip, hostname, created_at, updated_at)
+             VALUES ('one', '127.0.0.1', 'local.test', 'now', 'now')",
+            [],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO hostname_settings (hostname, created_at, updated_at)
+             VALUES ('local.test', 'now', 'now')",
+            [],
+        )
+        .unwrap();
+        drop(db);
+        let bundle_path = dir.join("current.meridian");
+        create_bundle(&db_path, &bundle_path, PASSPHRASE).unwrap();
+
+        let error = read_as_version_one_reader(&bundle_path, PASSPHRASE)
+            .expect_err("a version 2 bundle must not pass the version 1 gate");
+        assert!(
+            matches!(
+                &error,
+                AppError::Validation(message)
+                    if message == "Unsupported recovery bundle version"
+            ),
+            "unexpected error: {error}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_version_three_bundle_is_rejected_with_its_actual_version() {
+        let dir = temp_dir("recovery-v3");
+        let db_path = dir.join("meridian.db");
+        let db = store::init_database(&db_path).unwrap();
+        drop(db);
+        let bundle_path = dir.join("future.meridian");
+        write_bundle_with_version(&db_path, &bundle_path, 3);
+
+        let error = preview_bundle(&bundle_path, PASSPHRASE)
+            .expect_err("a version 3 bundle must not be read by this build");
+        assert!(
+            matches!(
+                &error,
+                AppError::Validation(message)
+                    if message
+                        == "Unsupported recovery bundle version 3 (this build reads versions 1, 2)"
+            ),
+            "unexpected error: {error}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn restore_bundle_rejects_certificate_material_that_does_not_match_the_database() {
         let dir = temp_dir("recovery-certificate-mismatch");
         let db_path = dir.join("meridian.db");
@@ -740,7 +1066,7 @@ mod tests {
         let database = fs::read(&snapshot_path).unwrap();
         let _ = fs::remove_file(&snapshot_path);
         let bundle = RecoveryBundle {
-            version: 1,
+            version: BUNDLE_VERSION,
             preview: RecoveryPreview {
                 exported_at: chrono::Utc::now().to_rfc3339(),
                 proxy_count: 0,
@@ -809,7 +1135,8 @@ mod tests {
         assert!(
             unaccounted.is_empty(),
             "schema tables are neither restored nor explicitly deferred: {unaccounted:?}; \
-             add them to RESTORE_TABLES or to RESTORE_DEFERRED_TABLES with the ticket that will"
+             add them to RESTORE_TABLES, or to RESTORE_DEFERRED_TABLES with the ticket that \
+             will restore them (that list is empty today)"
         );
     }
 }

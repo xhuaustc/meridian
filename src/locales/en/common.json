@@ -407,6 +407,8 @@
     "exportSuccess": "Encrypted recovery bundle created",
     "importSuccess": "Recovery complete. Previous database backup: {{path}}. Sync hosts to the system separately.",
     "importConfirm": "Restore {{proxies}} proxies, {{certificates}} certificates, {{hosts}} hosts entries and {{credentials}} DNS credentials? Current app data will be replaced. A database backup is created first; system hosts entries need a separate sync.",
+    "importSuccessOlderFormat": "Recovery complete (older bundle format, imported at the current version). Previous database backup: {{path}}. Sync hosts to the system separately.",
+    "importOlderFormatNote": "This bundle uses an older format and will be imported at the current version. New data structures come back with their defaults.",
     "about": "About",
     "version": "Version",
     "author": "Author",

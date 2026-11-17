@@ -284,6 +284,16 @@ export interface RecoveryPreview {
   dns_credential_count: number;
 }
 
+/**
+ * A bundle the app has read. `version` is the bundle's structure version and
+ * `current_version` is the one this build writes; a lower `version` means the
+ * bundle came from an older build and is imported at the current version.
+ */
+export interface RecoveryBundleInfo extends RecoveryPreview {
+  version: number;
+  current_version: number;
+}
+
 export interface ConfigPreview {
   valid: boolean;
   test_message: string;

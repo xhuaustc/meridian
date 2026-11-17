@@ -18,7 +18,7 @@ import { useHostsStore } from '../stores/hosts-store';
 import * as api from '../lib/api';
 import { cn } from '../lib/utils';
 import { REQUEST_PARAM_HINT_KEYS, REQUEST_PARAM_LABEL_KEYS, isValidRequestParamValue } from '../lib/requestParams';
-import type { RecoveryPreview, EngineCapabilities, RequestParamCatalog, RequestParamKey, RequestParamValues } from '../types';
+import type { RecoveryBundleInfo, EngineCapabilities, RequestParamCatalog, RequestParamKey, RequestParamValues } from '../types';
 
 export function SettingsPage() {
   const { t, i18n } = useTranslation('common');
@@ -31,7 +31,7 @@ export function SettingsPage() {
   const fetchEntries = useHostsStore((s) => s.fetchEntries);
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   const [recoveryPath, setRecoveryPath] = useState('');
-  const [recoveryPreview, setRecoveryPreview] = useState<RecoveryPreview | null>(null);
+  const [recoveryPreview, setRecoveryPreview] = useState<RecoveryBundleInfo | null>(null);
   const [passphrase, setPassphrase] = useState('');
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [autoStartEngine, setAutoStartEngine] = useState(false);
@@ -122,6 +122,9 @@ export function SettingsPage() {
 
   const handleImport = async () => {
     if (!recoveryPath || !recoveryPreview) return;
+    // A bundle written by an older build is still a normal restore; the hint
+    // tells the user it is being imported at the current version.
+    const olderFormat = recoveryPreview.version < recoveryPreview.current_version;
     try {
       setRecoveryBusy(true);
       const backupPath = await api.restoreRecoveryBundle(recoveryPath, passphrase);
@@ -131,7 +134,10 @@ export function SettingsPage() {
         fetchLists(),
         fetchEntries(),
       ]);
-      addToast('success', t('settings.importSuccess', { path: backupPath }));
+      addToast(
+        'success',
+        t(olderFormat ? 'settings.importSuccessOlderFormat' : 'settings.importSuccess', { path: backupPath }),
+      );
       setRecoveryPath('');
       setRecoveryPreview(null);
       setPassphrase('');
@@ -523,6 +529,11 @@ export function SettingsPage() {
           hosts: recoveryPreview?.host_count ?? 0,
           credentials: recoveryPreview?.dns_credential_count ?? 0,
         })}
+        note={
+          recoveryPreview && recoveryPreview.version < recoveryPreview.current_version
+            ? t('settings.importOlderFormatNote')
+            : undefined
+        }
         danger
       />
       </div>
