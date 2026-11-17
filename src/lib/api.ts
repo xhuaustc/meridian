@@ -17,6 +17,7 @@ import type {
   EngineCapabilities,
   LogChunk,
   RecoveryPreview,
+  RecoveryBundleInfo,
   ConfigPreview,
   ForceHttpsCheck,
   HostnameHstsCheck,
@@ -284,7 +285,7 @@ export const createRecoveryBundle = (savePath: string, passphrase: string) =>
   invoke<RecoveryPreview>('create_recovery_bundle', { savePath, passphrase });
 
 export const previewRecoveryBundle = (filePath: string, passphrase: string) =>
-  invoke<RecoveryPreview>('preview_recovery_bundle', { filePath, passphrase });
+  invoke<RecoveryBundleInfo>('preview_recovery_bundle', { filePath, passphrase });
 
 export const restoreRecoveryBundle = (filePath: string, passphrase: string) =>
   invoke<string>('restore_recovery_bundle', { filePath, passphrase });
