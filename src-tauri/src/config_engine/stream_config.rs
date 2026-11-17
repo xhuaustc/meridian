@@ -161,4 +161,14 @@ mod tests {
         assert!(config.contains("    proxy_pass 127.0.0.1:15432;"));
         assert!(config.contains("    proxy_socket_keepalive on;"));
     }
+
+    #[test]
+    fn stream_config_gets_no_http_response_headers() {
+        let config = generate_stream_block(&make_stream_rule(false), &[], Path::new("/tmp"));
+
+        assert!(
+            !config.contains("add_header"),
+            "stream rules never reach nginx's HTTP layer, so security headers do not apply"
+        );
+    }
 }

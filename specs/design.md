@@ -5,6 +5,7 @@
 |------|--------|--------|
 | 2026-04-04 | Initial design | Phase 2a |
 | 2026-04-04 | Add port conflict detection, multi-domain per port, CI build matrix, theme toggle, cert permissions | Gate 2 feedback |
+| 2026-11-17 | Add `hostname_settings` data model for HSTS + default security header switches | Ticket #20 |
 
 ## Architecture Overview
 
@@ -287,6 +288,19 @@ Stopped ────────► Running ◄────────► Runni
 | ip_cidr | TEXT | NOT NULL | 单 IP 或 CIDR，如 `192.168.1.0/24` |
 | sort_order | INTEGER | DEFAULT 0 | 匹配顺序（越小越先匹配） |
 | created_at | TEXT | NOT NULL | |
+
+### HostnameSettings (域名设置)
+| Field | Type | Constraints | Notes |
+|-------|------|-------------|-------|
+| hostname | TEXT | PK | 域名；设置对同域名的所有端口与路径生效 |
+| hsts_enabled | INTEGER | NOT NULL, DEFAULT 0 | 本版只存储，不生成 HSTS 头 |
+| hsts_max_age | INTEGER | NOT NULL, DEFAULT 300 | 秒 |
+| hsts_include_subdomains | INTEGER | NOT NULL, DEFAULT 0 | |
+| sec_nosniff | INTEGER | NOT NULL, DEFAULT 1 | → `X-Content-Type-Options: nosniff` |
+| sec_referrer_policy | INTEGER | NOT NULL, DEFAULT 1 | → `Referrer-Policy: strict-origin-when-cross-origin` |
+| sec_frame_options | INTEGER | NOT NULL, DEFAULT 1 | → `X-Frame-Options: SAMEORIGIN` |
+| created_at | TEXT | NOT NULL | ISO 8601 |
+| updated_at | TEXT | NOT NULL | ISO 8601 |
 
 ### AppSettings (应用设置)
 | Field | Type | Constraints | Notes |

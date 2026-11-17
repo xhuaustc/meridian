@@ -12,6 +12,7 @@
 | 2026-04-05 | Add configurable worker_processes setting (default "2", supports "auto") | Performance tuning |
 | 2026-04-05 | Generate nginx.conf on every app startup, not just auto-start | Bug fix: first-launch |
 | 2026-11-17 | Synthesise a port-80 308 redirect block for rules with `force_https` | Ticket #22 |
+| 2026-11-17 | Default security response headers (3, `always`) with per-hostname switches | Ticket #20 |
 
 ## Feature Description
 
@@ -33,9 +34,9 @@
 
 ### `generate_all_configs_with_settings`
 - **Type:** Internal function
-- **Input:** `(data_dir, rules, certs, access_lists, worker_processes: &str)`
+- **Input:** `(data_dir, rules, certs, access_lists, hostname_settings: &HashMap<String, HostnameSettings>, worker_processes: &str)`
 - **Output:** 同 `generate_all_configs`
-- **Notes:** 支持传入 `worker_processes` 设置值（"auto" 或数字字符串）。由 `apply_config_inner` 和应用启动流程调用，从数据库读取 `worker_processes` 设置。
+- **Notes:** 支持传入 `worker_processes` 设置值（"auto" 或数字字符串）和按 hostname 索引的安全设置。由 `apply_db_state`、配置预览和应用启动流程调用，两处设置都从数据库读取。
 
 ### `validate_port_conflicts`
 - **Type:** Internal function
@@ -77,6 +78,7 @@
 11. **自定义 502 错误页面**：每个 HTTP server block 中添加 `proxy_intercept_errors on;` + `error_page 502 /502.html;` + 内部 location 指向 `nginx/html/502.html`。错误页面 HTML 在每次配置生成时由 `error_pages::write_error_pages()` 写入 `nginx/html/` 目录，使用与应用一致的视觉风格
 12. **启动时生成配置**：应用启动时始终调用 `generate_all_configs`，不论 `auto_start_engine` 是否开启。确保 `nginx.conf` 在 status 轮询前就存在，避免首次安装时报错
 13. **合成 HTTP→HTTPS 跳转块（`force_https`）**：对每个「至少有一条 `proxy_type=http` + `tls_mode=terminate` + `force_https=1` 规则」的域名，额外合成一个 80 端口 server block，内容只有 `listen 80;` + `server_name` + `return 308 https://$host$request_uri;`。它是**生成物**：不写 `proxy_rules`、不出现在 `list_proxies`、不参与 `detect_conflicts` 与规则计数。写在拥有该域名的 conf.d 文件末尾（同域多个 HTTPS 端口时只写在最小端口那个文件，保证只出现一次）；该域名已有真实 80 端口规则时跳过合成（避免重复 `server_name`），跳过原因由 `check_force_https` 暴露给表单做黄色提示
+14. **默认安全响应头**：每个 HTTP server block 在 `server_name`/TLS 指令之后、`proxy_intercept_errors` 之前展开同一份默认头清单：`X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`、`X-Frame-Options: SAMEORIGIN`，每条都带 `always`（否则 502/404 等错误响应会丢头）。清单由 `security_headers::response_headers()` **单一函数**产出，server 块只有**一处**展开；`hostname_settings` 行可逐个关掉，没有行 = 三个全开。`location` 内禁止 `add_header`（1.26.2 子层只要出现一条就整体接管父层清单，`nginx -t` 仍会通过），502 的 internal location 保持零 `add_header`。`passthrough` 与 stream 规则不生成响应头，`http` 层也不写 `add_header`。HSTS 列已建表但本版不生成 `Strict-Transport-Security`
 
 ## Nginx Config Generation Examples
 
@@ -130,6 +132,35 @@ server {
     }
 }
 ```
+
+### Default security response headers
+每个 HTTP server block（`tls_mode=none` 或 `terminate`）都带同一份默认头清单；`tls_mode=passthrough` 与 stream 规则不生成。`hostname_settings` 中某行把开关设为 0 时，只跳过对应的那一条。
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name app.local;
+    ssl_certificate     /path/to/certs/cert_001.pem;
+    ssl_certificate_key /path/to/certs/cert_001.key;
+
+    # Security response headers; `always` also covers error responses.
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header X-Frame-Options SAMEORIGIN always;
+
+    proxy_intercept_errors on;
+    error_page 502 /502.html;
+    location = /502.html {
+        root "/path/to/data/nginx/html";
+        internal;
+    }
+}
+```
+
+- 清单由 `security_headers::response_headers()` 产出（列 → 头名/值的映射集中在该模块），server 块只有一处循环展开
+- 所有 `add_header` 都带 `always`，所以 502 错误页也带头；`location` 段（含 `/502.html`）内 `add_header` 计数必须为 0
+- 没有 `hostname_settings` 行 = 三个头全开、HSTS 关；表行可以逐个关闭
+- 本版只建 HSTS 列，不生成 `Strict-Transport-Security`
 
 ### Synthesised HTTP -> HTTPS redirect (`force_https`)
 `force_https` 不产生规则行：生成时对每个「存在 `proxy_type=http` + `tls_mode=terminate` + `force_https=1` 规则」的域名合成一个 80 端口 server block，追加在**该域名自己的 conf.d 文件**里（不改 `{port}_{domain}.conf` 命名，443 规则就落在 `443_app_local.conf`）。
@@ -264,6 +295,10 @@ server {
 | TP-027 | Normal | HTTPS rule with `force_https` on, domain already has a real 80 rule | No redirect block anywhere in conf.d/ | Skipped, form warns |
 | TP-028 | Normal | Turn `force_https` off and regenerate | No `return 308` / `listen 80` residue | No separate file to clean up |
 | TP-029 | Normal | `force_https` on, two HTTPS ports for one domain | Redirect block appears exactly once (lowest port file) | No duplicate server_name |
+| TP-030 | Normal | HTTP server block, no `hostname_settings` row | 3 `add_header`, every one ends in `always` | Ticket #20 |
+| TP-031 | Normal | `hostname_settings` row with `sec_nosniff = 0` | Only Referrer-Policy and X-Frame-Options, server block still valid | Ticket #20 |
+| TP-032 | Normal | Passthrough rule and stream rule | Neither config contains `add_header`; http-level `nginx.conf` neither | Ticket #20 |
+| TP-033 | Boundary | Any generated location, including `location = /502.html` | `add_header` count inside locations is 0 | Ticket #20 |
 
 ## Implementation Map
 
@@ -274,6 +309,7 @@ server {
 | Redirect block generation | `src-tauri/src/config_engine/http_config.rs` | `generate_https_redirect_block()` | Synthesised 80 port `return 308`; `force_https_redirect_hostnames()` / `check_force_https()` decide when it applies |
 | Stream config generation | `src-tauri/src/config_engine/stream_config.rs` | `generate_stream_block()` | Per-rule access_log with stream_meridian format |
 | Error page generation | `src-tauri/src/config_engine/error_pages.rs` | `write_error_pages()` | Writes `nginx/html/502.html` |
-| Config orchestration | `src-tauri/src/config_engine/mod.rs` | `generate_all_configs()`, `generate_all_configs_with_settings()` | Passes data_dir + worker_processes to sub-generators |
+| Security response headers | `src-tauri/src/config_engine/security_headers.rs` | `response_headers()` | Single source of the header list; column → name/value mapping lives here |
+| Config orchestration | `src-tauri/src/config_engine/mod.rs` | `generate_all_configs()`, `generate_all_configs_with_settings()` | Passes data_dir, worker_processes and the hostname settings map to sub-generators |
 | Port conflict detection | `src-tauri/src/config_engine/mod.rs` | `validate_port_conflicts()` | |
 | Config write + rollback | `src-tauri/src/config_engine/mod.rs` | `write_configs()`, `restore_previous_configs()` | |

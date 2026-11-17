@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use std::path::Path;
 
-use super::{nginx_path, nginx_path_str};
-use crate::store::models::{AccessList, AccessRule, Certificate, ProxyRule};
+use super::{nginx_path, nginx_path_str, security_headers};
+use crate::store::models::{AccessList, AccessRule, Certificate, HostnameSettings, ProxyRule};
 
 #[derive(serde::Deserialize)]
 struct UpstreamTarget {
@@ -49,11 +50,15 @@ fn upstream_name(rule_id: &str) -> String {
 }
 
 /// Generate an nginx HTTP server block for one or more rules sharing the same port+domain.
+///
+/// `hostname_settings` carries the per-hostname overrides for the default
+/// security response headers; a hostname without a row keeps all three on.
 pub fn generate_server_block(
     rules: &[&ProxyRule],
     certs: &[Certificate],
     access_lists: &[(AccessList, Vec<AccessRule>)],
     data_dir: &Path,
+    hostname_settings: &HashMap<String, HostnameSettings>,
 ) -> String {
     if rules.is_empty() {
         return String::new();
@@ -117,6 +122,33 @@ pub fn generate_server_block(
     // TLS passthrough is handled at stream level, but add a comment
     if first.tls_mode == "passthrough" {
         out.push_str("    # TLS passthrough - should use stream block instead\n");
+    }
+
+    // Default security response headers. One function produces the complete
+    // list and this is the only place that expands it. `always` keeps the
+    // headers on error responses, including the 502 page below, and the list
+    // stays at server level so no `location` can drop it. Passthrough rules are
+    // forwarded at stream level, where nginx never sees the HTTP response, so
+    // they deliberately carry no response headers.
+    if first.tls_mode != "passthrough" {
+        let headers = security_headers::response_headers(hostname_settings.get(domain));
+        if !headers.is_empty() {
+            out.push('\n');
+            out.push_str(
+                "    # Security response headers; `always` also covers error responses.\n",
+            );
+            for header in headers {
+                let always = if header.applies_to_error_responses {
+                    " always"
+                } else {
+                    ""
+                };
+                out.push_str(&format!(
+                    "    add_header {} {}{};\n",
+                    header.name, header.value, always
+                ));
+            }
+        }
     }
 
     out.push('\n');
@@ -329,6 +361,10 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+    use crate::config_engine::test_support::{
+        assert_every_add_header_applies_to_error_responses, assert_no_add_header_in_locations,
+        count_directive_in_blocks, directives_named,
+    };
 
     fn make_http_rule(keep_alive: bool) -> ProxyRule {
         ProxyRule {
@@ -360,7 +396,7 @@ mod tests {
     #[test]
     fn keep_alive_single_target_uses_upstream_block() {
         let rule = make_http_rule(true);
-        let config = generate_server_block(&[&rule], &[], &[], Path::new("/tmp"));
+        let config = generate_server_block(&[&rule], &[], &[], Path::new("/tmp"), &HashMap::new());
 
         assert!(config.contains("upstream upstream_123456789abc {"));
         assert!(config.contains("    server 127.0.0.1:3000;"));
@@ -389,11 +425,142 @@ mod tests {
             &[],
             &[(acl, Vec::new())],
             Path::new("/tmp"),
+            &HashMap::new(),
         );
         let public_location = config.split("location /public {").nth(1).unwrap();
         assert!(config.contains("location /private {"));
         assert!(config.contains("        deny all;"));
         assert!(!public_location.contains("deny all;"));
+    }
+
+    #[test]
+    fn the_three_security_headers_are_expanded_once_per_server_block() {
+        let mut api = make_http_rule(false);
+        api.path_prefix = Some("/api".to_string());
+        let mut web = make_http_rule(false);
+        web.id = "rule-web".to_string();
+        web.path_prefix = Some("/web".to_string());
+
+        let config =
+            generate_server_block(&[&api, &web], &[], &[], Path::new("/tmp"), &HashMap::new());
+
+        assert_eq!(
+            count_directive_in_blocks(&config, "server", "add_header"),
+            3,
+            "the complete list is expanded once per server block, not once per rule"
+        );
+        assert_eq!(
+            directives_named(&config, "add_header"),
+            vec![
+                "add_header X-Content-Type-Options nosniff always",
+                "add_header Referrer-Policy strict-origin-when-cross-origin always",
+                "add_header X-Frame-Options SAMEORIGIN always",
+            ]
+        );
+        assert_no_add_header_in_locations(&config);
+        assert_every_add_header_applies_to_error_responses(&config);
+    }
+
+    #[test]
+    fn security_headers_sit_between_the_server_name_and_the_error_page_directives() {
+        let rule = make_http_rule(false);
+        let config = generate_server_block(&[&rule], &[], &[], Path::new("/tmp"), &HashMap::new());
+
+        let server_name = config.find("server_name app.local;").unwrap();
+        let first_header = config.find("add_header X-Content-Type-Options").unwrap();
+        let intercept_errors = config.find("proxy_intercept_errors on;").unwrap();
+        assert!(server_name < first_header);
+        assert!(first_header < intercept_errors);
+    }
+
+    #[test]
+    fn a_hostname_without_a_settings_row_keeps_all_three_headers() {
+        let rule = make_http_rule(false);
+        let settings = HashMap::from([(
+            "other.local".to_string(),
+            HostnameSettings {
+                hostname: "other.local".to_string(),
+                sec_nosniff: false,
+                ..HostnameSettings::default()
+            },
+        )]);
+
+        let config = generate_server_block(&[&rule], &[], &[], Path::new("/tmp"), &settings);
+
+        assert_eq!(
+            count_directive_in_blocks(&config, "server", "add_header"),
+            3,
+            "only a row for this hostname may turn a header off"
+        );
+    }
+
+    #[test]
+    fn a_hostname_row_with_a_switch_off_omits_only_that_header() {
+        let rule = make_http_rule(false);
+        let settings = HashMap::from([(
+            "app.local".to_string(),
+            HostnameSettings {
+                hostname: "app.local".to_string(),
+                sec_referrer_policy: false,
+                ..HostnameSettings::default()
+            },
+        )]);
+
+        let config = generate_server_block(&[&rule], &[], &[], Path::new("/tmp"), &settings);
+
+        assert_eq!(
+            count_directive_in_blocks(&config, "server", "add_header"),
+            2
+        );
+        assert!(!config.contains("Referrer-Policy"));
+        assert!(config.contains("add_header X-Content-Type-Options nosniff always;"));
+        assert!(config.contains("add_header X-Frame-Options SAMEORIGIN always;"));
+        assert_no_add_header_in_locations(&config);
+        assert_every_add_header_applies_to_error_responses(&config);
+    }
+
+    #[test]
+    fn a_passthrough_rule_gets_no_security_headers() {
+        let mut rule = make_http_rule(false);
+        rule.tls_mode = "passthrough".to_string();
+        let settings = HashMap::from([(
+            "app.local".to_string(),
+            HostnameSettings {
+                hostname: "app.local".to_string(),
+                ..HostnameSettings::default()
+            },
+        )]);
+
+        let config = generate_server_block(&[&rule], &[], &[], Path::new("/tmp"), &settings);
+
+        assert_eq!(
+            count_directive_in_blocks(&config, "server", "add_header"),
+            0,
+            "passthrough is forwarded at stream level, so nginx never sees an HTTP response to decorate"
+        );
+    }
+
+    #[test]
+    fn hsts_columns_are_stored_but_hsts_is_not_emitted_yet() {
+        let rule = make_http_rule(false);
+        let settings = HashMap::from([(
+            "app.local".to_string(),
+            HostnameSettings {
+                hostname: "app.local".to_string(),
+                hsts_enabled: true,
+                hsts_max_age: 31_536_000,
+                hsts_include_subdomains: true,
+                ..HostnameSettings::default()
+            },
+        )]);
+
+        let config = generate_server_block(&[&rule], &[], &[], Path::new("/tmp"), &settings);
+
+        assert!(!config.contains("Strict-Transport-Security"));
+        assert_eq!(
+            count_directive_in_blocks(&config, "server", "add_header"),
+            3
+        );
     }
 
     fn make_https_rule(id: &str, port: u16, force_https: bool) -> ProxyRule {

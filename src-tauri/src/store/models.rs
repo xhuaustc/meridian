@@ -233,3 +233,38 @@ pub struct CreateHostEntry {
     pub hostname: String,
     pub comment: Option<String>,
 }
+
+/// Settings that apply to every server block serving one hostname.
+///
+/// A hostname without a row gets [`HostnameSettings::default`]: the three
+/// default security response headers on, HSTS off. The HSTS columns are stored
+/// now so a later ticket can emit `Strict-Transport-Security` without another
+/// migration; this ticket does not generate that header.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostnameSettings {
+    pub hostname: String,
+    pub hsts_enabled: bool,
+    pub hsts_max_age: i64,
+    pub hsts_include_subdomains: bool,
+    pub sec_nosniff: bool,
+    pub sec_referrer_policy: bool,
+    pub sec_frame_options: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl Default for HostnameSettings {
+    fn default() -> Self {
+        Self {
+            hostname: String::new(),
+            hsts_enabled: false,
+            hsts_max_age: 300,
+            hsts_include_subdomains: false,
+            sec_nosniff: true,
+            sec_referrer_policy: true,
+            sec_frame_options: true,
+            created_at: String::new(),
+            updated_at: String::new(),
+        }
+    }
+}

@@ -120,6 +120,17 @@ mod tests {
     }
 
     #[test]
+    fn test_main_config_emits_no_response_headers() {
+        let data_dir = PathBuf::from("/tmp/test");
+        let config = generate_main_config(&data_dir, "2", Capabilities::default());
+        assert!(
+            !config.contains("add_header"),
+            "security headers belong to each server block, never the http level: \
+             an http-level directive would leak onto every hostname and passthrough server"
+        );
+    }
+
+    #[test]
     fn test_main_config_enables_http2_when_the_build_supports_it() {
         let data_dir = PathBuf::from("/tmp/test");
         let config = generate_main_config(

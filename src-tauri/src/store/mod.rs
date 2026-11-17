@@ -2,6 +2,7 @@ pub mod access_repo;
 pub mod acme_repo;
 pub mod cert_repo;
 pub mod dns_credential_repo;
+pub mod hostname_settings_repo;
 pub mod hosts_repo;
 pub mod models;
 pub mod proxy_repo;
@@ -148,6 +149,20 @@ fn run_migrations(conn: &Connection) -> Result<(), AppError> {
             hostname TEXT NOT NULL UNIQUE,
             comment TEXT,
             enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        -- Per-hostname security settings. Defaults are the product defaults:
+        -- the three security headers on, HSTS off with a 300 second max-age.
+        CREATE TABLE IF NOT EXISTS hostname_settings (
+            hostname TEXT PRIMARY KEY,
+            hsts_enabled INTEGER NOT NULL DEFAULT 0,
+            hsts_max_age INTEGER NOT NULL DEFAULT 300,
+            hsts_include_subdomains INTEGER NOT NULL DEFAULT 0,
+            sec_nosniff INTEGER NOT NULL DEFAULT 1,
+            sec_referrer_policy INTEGER NOT NULL DEFAULT 1,
+            sec_frame_options INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -318,6 +333,45 @@ mod tests {
 
         let rule = crate::store::proxy_repo::get_by_id(&conn, "legacy").unwrap();
         assert!(!rule.force_https, "existing rows must not force HTTPS");
+    }
+
+    #[test]
+    fn migration_creates_hostname_settings_with_safe_defaults_on_an_old_database() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        // A database created before hostname_settings existed: only the KV table.
+        conn.execute_batch(
+            "CREATE TABLE app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );",
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+        // A second startup must be a no-op rather than duplicate-table error.
+        run_migrations(&conn).unwrap();
+
+        // A row created with only the key and timestamps relies on the column
+        // defaults: headers on, HSTS off, max-age 300.
+        conn.execute(
+            "INSERT INTO hostname_settings (hostname, created_at, updated_at)
+             VALUES ('app.local', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+
+        let settings = crate::store::hostname_settings_repo::list_all(&conn).unwrap();
+        let row = settings.get("app.local").expect("migrated table row");
+        assert!(row.sec_nosniff, "X-Content-Type-Options defaults to on");
+        assert!(row.sec_referrer_policy, "Referrer-Policy defaults to on");
+        assert!(row.sec_frame_options, "X-Frame-Options defaults to on");
+        assert_eq!(row.hsts_max_age, 300);
+        assert!(!row.hsts_enabled, "HSTS defaults to off");
+        assert!(
+            !row.hsts_include_subdomains,
+            "includeSubdomains defaults off"
+        );
     }
 
     #[test]
