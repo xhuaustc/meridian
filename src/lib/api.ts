@@ -19,6 +19,8 @@ import type {
   RecoveryPreview,
   ConfigPreview,
   ForceHttpsCheck,
+  HostnameHstsCheck,
+  HostnameHstsSettings,
   RequestParamCatalog,
   ProxyMetrics,
   HostEntry,
@@ -74,6 +76,27 @@ export const checkForceHttps = (
     listenPort,
     excludeId: excludeId ?? undefined,
   });
+
+/** The HSTS state for a hostname plus the rule whose form owns the toggle. */
+export const getHostnameHsts = (domain: string) =>
+  invoke<HostnameHstsCheck>('get_hostname_hsts', { domain });
+
+/** Turn HSTS on or off for a hostname; the backend regenerates the configs. */
+export const setHostnameHsts = (
+  domain: string,
+  enabled: boolean,
+  maxAge: number,
+  includeSubdomains: boolean,
+) =>
+  invoke<HostnameHstsSettings>('set_hostname_hsts', {
+    domain,
+    enabled,
+    maxAge,
+    includeSubdomains,
+  });
+
+/** Hostnames whose HSTS switch is on, for the rule list's certificate warning. */
+export const listHstsHostnames = () => invoke<string[]>('list_hsts_hostnames');
 
 /** The request-parameter defaults an inheriting rule shows, plus the presets. */
 export const getRequestParamDefaults = () =>

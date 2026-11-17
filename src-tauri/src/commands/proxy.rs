@@ -5,7 +5,8 @@ use tauri::State;
 use crate::config_engine;
 use crate::error::AppError;
 use crate::request_params;
-use crate::store::models::{CreateProxyRule, ProxyRule, UpdateProxyRule};
+use crate::store::hostname_settings_repo;
+use crate::store::models::{CreateProxyRule, HostnameSettings, ProxyRule, UpdateProxyRule};
 use crate::store::proxy_repo;
 use crate::validators;
 use crate::AppState;
@@ -91,6 +92,57 @@ pub fn get_request_param_defaults(
 ) -> Result<request_params::RequestParamCatalog, AppError> {
     let db = state.get_conn()?;
     request_params::catalog(&db)
+}
+
+/// The HSTS state for a hostname plus the rule whose form owns the toggle.
+///
+/// HSTS is stored per hostname, so several rules can share one switch. The form
+/// asks the backend which rule may present it instead of guessing, which is the
+/// same shape as `check_force_https` for the synthesised redirect.
+#[tauri::command]
+pub async fn get_hostname_hsts(
+    domain: String,
+    state: State<'_, AppState>,
+) -> Result<config_engine::hsts::HstsCheck, AppError> {
+    let db = state.get_conn()?;
+    let rules = proxy_repo::list_enabled(&db)?;
+    let settings = hostname_settings_repo::get(&db, domain.trim())?;
+    Ok(config_engine::hsts::check(
+        &rules,
+        settings.as_ref(),
+        domain.trim(),
+    ))
+}
+
+/// Turn HSTS on or off for a hostname and regenerate the configs.
+///
+/// HSTS is the only hostname setting this ticket writes; the security-header
+/// switches keep their stored values.
+#[tauri::command]
+pub async fn set_hostname_hsts(
+    domain: String,
+    enabled: bool,
+    max_age: i64,
+    include_subdomains: bool,
+    state: State<'_, AppState>,
+) -> Result<HostnameSettings, AppError> {
+    validators::validate_hsts_settings(&domain, max_age)?;
+    let domain = domain.trim().to_string();
+    apply_proxy_change(&state, |db| {
+        hostname_settings_repo::set_hsts(db, &domain, enabled, max_age, include_subdomains)
+    })
+}
+
+/// Hostnames whose HSTS switch is on, for the rule list's certificate warning.
+///
+/// A certificate that is about to expire on an HSTS-locked hostname is worse
+/// than an ordinary expiry: browsers refuse to let the visitor bypass the
+/// error, so the site becomes unreachable.
+#[tauri::command]
+pub async fn list_hsts_hostnames(state: State<'_, AppState>) -> Result<Vec<String>, AppError> {
+    let db = state.get_conn()?;
+    let settings = hostname_settings_repo::list_all(&db)?;
+    Ok(config_engine::hsts::enabled_hostnames(&settings))
 }
 
 #[tauri::command]

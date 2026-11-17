@@ -81,6 +81,32 @@ export interface ForceHttpsCheck {
   blocking_rule_name: string | null;
 }
 
+/**
+ * HSTS is stored per hostname, not per rule. `owner_rule_id` names the rule
+ * whose form shows the toggle; every other rule on the hostname shows the
+ * read-only hint instead of a second switch.
+ */
+export interface HostnameHstsCheck {
+  enabled: boolean;
+  max_age: number;
+  include_subdomains: boolean;
+  owner_rule_id: string | null;
+  owner_rule_name: string | null;
+}
+
+/** A stored `hostname_settings` row, as the backend returns it. */
+export interface HostnameHstsSettings {
+  hostname: string;
+  hsts_enabled: boolean;
+  hsts_max_age: number;
+  hsts_include_subdomains: boolean;
+  sec_nosniff: boolean;
+  sec_referrer_policy: boolean;
+  sec_frame_options: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface UpstreamTarget {
   host: string;
   port: number;

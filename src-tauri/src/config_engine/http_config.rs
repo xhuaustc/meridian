@@ -52,8 +52,10 @@ fn upstream_name(rule_id: &str) -> String {
 
 /// Generate an nginx HTTP server block for one or more rules sharing the same port+domain.
 ///
-/// `hostname_settings` carries the per-hostname overrides for the default
-/// security response headers; a hostname without a row keeps all three on.
+/// `hostname_settings` carries the per-hostname overrides for the response
+/// headers; a hostname without a row keeps all three default headers on and
+/// HSTS off. `Strict-Transport-Security` is only added when this block
+/// terminates TLS *and* the hostname's row turns HSTS on.
 pub fn generate_server_block(
     rules: &[&ProxyRule],
     certs: &[Certificate],
@@ -133,7 +135,12 @@ pub fn generate_server_block(
     // forwarded at stream level, where nginx never sees the HTTP response, so
     // they deliberately carry no response headers.
     if first.tls_mode != "passthrough" {
-        let headers = security_headers::response_headers(hostname_settings.get(domain));
+        let headers = security_headers::response_headers(
+            hostname_settings.get(domain),
+            security_headers::ResponseContext {
+                tls_terminated: has_tls,
+            },
+        );
         if !headers.is_empty() {
             out.push('\n');
             out.push_str(
@@ -145,9 +152,14 @@ pub fn generate_server_block(
                 } else {
                     ""
                 };
+                let value = if header.quote_value {
+                    format!("\"{}\"", header.value)
+                } else {
+                    header.value
+                };
                 out.push_str(&format!(
                     "    add_header {} {}{};\n",
-                    header.name, header.value, always
+                    header.name, value, always
                 ));
             }
         }
@@ -740,16 +752,173 @@ mod tests {
         );
     }
 
-    #[test]
-    fn hsts_columns_are_stored_but_hsts_is_not_emitted_yet() {
-        let rule = make_http_rule(false);
-        let settings = HashMap::from([(
+    /// A `hostname_settings` map whose only row is `app.local` with the given
+    /// HSTS values; the three default headers stay on.
+    fn hsts_settings(
+        enabled: bool,
+        max_age: i64,
+        include_subdomains: bool,
+    ) -> HashMap<String, HostnameSettings> {
+        HashMap::from([(
             "app.local".to_string(),
             HostnameSettings {
                 hostname: "app.local".to_string(),
+                hsts_enabled: enabled,
+                hsts_max_age: max_age,
+                hsts_include_subdomains: include_subdomains,
+                ..HostnameSettings::default()
+            },
+        )])
+    }
+
+    fn hsts_statements(config: &str) -> Vec<&str> {
+        directives_named(config, "add_header")
+            .into_iter()
+            .filter(|statement| statement.contains("Strict-Transport-Security"))
+            .collect()
+    }
+
+    #[test]
+    fn a_tls_server_with_hsts_on_emits_the_header_once() {
+        let rule = make_https_rule("tls", 443, false);
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &hsts_settings(true, 300, false),
+            &RequestDefaults::builtin(),
+        );
+
+        assert_eq!(hsts_statements(&config).len(), 1);
+        assert!(
+            config.contains("    add_header Strict-Transport-Security \"max-age=300\" always;\n")
+        );
+        assert_eq!(
+            count_directive_in_blocks(&config, "server", "add_header"),
+            4,
+            "the three default headers plus HSTS, expanded once"
+        );
+        assert_no_add_header_in_locations(&config);
+        assert_every_add_header_applies_to_error_responses(&config);
+    }
+
+    #[test]
+    fn a_tls_server_with_hsts_off_keeps_the_three_default_headers() {
+        let rule = make_https_rule("tls", 443, false);
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &hsts_settings(false, 300, false),
+            &RequestDefaults::builtin(),
+        );
+
+        assert!(hsts_statements(&config).is_empty());
+        assert_eq!(
+            count_directive_in_blocks(&config, "server", "add_header"),
+            3
+        );
+    }
+
+    #[test]
+    fn a_plain_server_never_emits_hsts_even_when_the_row_turns_it_on() {
+        let rule = make_http_rule(false);
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &hsts_settings(true, 31_536_000, true),
+            &RequestDefaults::builtin(),
+        );
+
+        assert!(
+            hsts_statements(&config).is_empty(),
+            "HSTS over plain HTTP would be meaningless, so the row must not add it"
+        );
+        assert_eq!(
+            count_directive_in_blocks(&config, "server", "add_header"),
+            3
+        );
+    }
+
+    #[test]
+    fn a_port_443_server_with_tls_mode_none_does_not_emit_hsts() {
+        let mut rule = make_http_rule(false);
+        rule.listen_port = 443;
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &hsts_settings(true, 300, false),
+            &RequestDefaults::builtin(),
+        );
+
+        assert!(config.contains("    listen 443;\n"));
+        assert!(!config.contains("listen 443 ssl;"));
+        assert!(
+            hsts_statements(&config).is_empty(),
+            "TLS is decided by tls_mode, never by the port number"
+        );
+    }
+
+    #[test]
+    fn hsts_carries_the_configured_max_age_and_include_subdomains() {
+        let rule = make_https_rule("tls", 443, false);
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &hsts_settings(true, 31_536_000, true),
+            &RequestDefaults::builtin(),
+        );
+
+        assert!(config.contains(
+            "    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" \
+             always;\n"
+        ));
+        assert!(!config.contains("preload"));
+    }
+
+    #[test]
+    fn hsts_is_expanded_once_per_server_block_not_once_per_rule() {
+        let mut api = make_https_rule("tls-api", 443, false);
+        api.path_prefix = Some("/api".to_string());
+        let mut web = make_https_rule("tls-web", 443, false);
+        web.path_prefix = Some("/web".to_string());
+
+        let config = generate_server_block(
+            &[&api, &web],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &hsts_settings(true, 300, false),
+            &RequestDefaults::builtin(),
+        );
+
+        assert_eq!(
+            hsts_statements(&config).len(),
+            1,
+            "rules sharing a server block share its header list"
+        );
+        assert_eq!(
+            count_directive_in_blocks(&config, "server", "add_header"),
+            4
+        );
+    }
+
+    #[test]
+    fn another_hostnames_hsts_row_does_not_leak_into_this_server_block() {
+        let rule = make_https_rule("tls", 443, false);
+        let settings = HashMap::from([(
+            "other.local".to_string(),
+            HostnameSettings {
+                hostname: "other.local".to_string(),
                 hsts_enabled: true,
-                hsts_max_age: 31_536_000,
-                hsts_include_subdomains: true,
                 ..HostnameSettings::default()
             },
         )]);
@@ -763,7 +932,7 @@ mod tests {
             &RequestDefaults::builtin(),
         );
 
-        assert!(!config.contains("Strict-Transport-Security"));
+        assert!(hsts_statements(&config).is_empty());
         assert_eq!(
             count_directive_in_blocks(&config, "server", "add_header"),
             3

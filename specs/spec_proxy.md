@@ -7,6 +7,7 @@
 | 2026-04-04 | Add frontend form validation with field error highlighting | UX improvement |
 | 2026-04-04 | Add default listen port on proxy type selection (HTTP→80, HTTPS→443) | UX improvement |
 | 2026-11-17 | Add `force_https` flag: port-80 308 redirect is synthesised at generation time, never stored as a rule | Ticket #22 |
+| 2026-11-17 | Add the per-hostname HSTS switch (TLS-terminate rules only), the same-hostname read-only hint and four non-blocking risk prompts | Ticket #23 |
 
 ## Feature Description
 
@@ -23,6 +24,7 @@
 - UC-007: 搜索和筛选规则列表
 - UC-008: 在 Dashboard 查看统计概览
 - UC-009: 勾选「强制 HTTPS」后，由生成器自动补一个 80 端口跳转块，无需另建 80 规则
+- UC-010: 在 HTTPS 规则上按域名开启 HSTS，调整 `max-age` 与子域；同域名的其他规则只显示「已由某条规则开启」
 
 ## Interface Definition
 
@@ -107,6 +109,8 @@
 10. **前端表单验证**：保存前检查所有必填字段（name, listen_port, upstream_host, upstream_port, domain for HTTP/HTTPS），不合格字段添加红色边框高亮，第一个错误以 toast 提示。同时执行异步端口冲突检查。
 11. **默认监听端口**：创建新规则时（非编辑），选择 HTTP 类型自动填入 80，选择 HTTPS 自动填入 443，TCP/UDP 留空
 12. **强制 HTTPS（`force_https`）**：只对「`proxy_type=http` + `tls_mode=terminate`」的规则生效，表单也只在这个组合下显示开关。打开后生成器为该域名合成 80 端口 `return 308` 跳转块（见 spec_config_engine.md），跳转块不落库、不出现在规则列表、不影响规则计数与冲突检测。若该域名已有真实 80 端口规则（或本规则自身监听 80），跳过合成，表单给黄色提示说明原因（不阻塞保存）
+13. **HSTS（按域名）**：设置存在 `hostname_settings` 行，表单只对「`proxy_type=http` + `tls_mode=terminate`」的规则显示 HSTS 区；`max-age` 默认 300 秒、可改（1–31536000），`includeSubDomains` 默认关，**不提供 preload**。同域名只有「拥有者规则」能改（拥有者 = 启用中、TLS 终止、端口最小；同端口按 id 定序），其他规则显示「已由规则「X」开启（max-age=…）」的只读提示，不再各自下发一个开关；生成器每个 TLS server block 恰好下发一条头（见 spec_config_engine.md）
+14. **四个风险时刻只提示、不阻止**：关闭 HSTS、把规则改成非 TLS、删除规则、证书临期（≤30 天或已过期）。前两个是表单里的确认对话框（继续即生效），删除是 Dashboard 删除确认框里的附加黄字（单条与批量都有），证书临期是规则列表状态列与表单 HSTS 区的黄色提示。提示文案都说明「浏览器缓存不会随操作消失」，操作本身始终可完成
 
 ## Test Points
 
@@ -135,6 +139,11 @@
 | TP-021 | Normal | `force_https` on an https rule, no 80 rule for the domain | Generated 443 file also holds the synthesised 80 redirect block | See spec_config_engine.md TP-026 |
 | TP-022 | Normal | `force_https` on, domain already has an enabled 80 rule | No redirect block; form shows a yellow "skipped" hint | Non-blocking |
 | TP-023 | Normal | `force_https` flag is only offered for http + TLS terminate | Toggle hidden for stream/passthrough/none; value forced to false when saved | |
+| TP-024 | Normal | Open a TLS rule whose hostname has HSTS on and is owned by another TLS rule | Read-only hint names the owner; no second toggle | Non-blocking |
+| TP-025 | Normal | Turn HSTS off in the owner's form | Confirm dialog explains the browser cache; confirming still lets the save go through | Non-blocking |
+| TP-026 | Normal | Switch a TLS rule to non-TLS while the hostname's HSTS is on | Confirm dialog; continuing applies the change | Non-blocking |
+| TP-027 | Normal | Delete a rule whose domain has HSTS on | Delete dialog adds the "browser cache stays" warning; delete still works | Single + batch |
+| TP-028 | Boundary | HSTS on + certificate expires within 30 days | Rule row shows the HSTS/cert-expiring warning and the form shows the inline note | Non-blocking |
 
 ## Implementation Map
 
@@ -143,6 +152,8 @@
 | Proxy CRUD commands | `src-tauri/src/commands/proxy.rs` | `create_proxy`, `update_proxy`, `delete_proxy`, `toggle_proxy`, `list_proxies` | |
 | Port conflict check | `src-tauri/src/commands/engine.rs` | `check_port_conflict` | |
 | Force-HTTPS availability check | `src-tauri/src/commands/proxy.rs` | `check_force_https` | Backs the form's yellow "skipped" hint |
+| HSTS commands | `src-tauri/src/commands/proxy.rs` | `get_hostname_hsts`, `set_hostname_hsts`, `list_hsts_hostnames` | Per-hostname switch, write + regenerate; list feeds the deletion/cert warnings |
+| HSTS ownership | `src-tauri/src/config_engine/hsts.rs` | `owner_rule`, `check` | Only the lowest TLS port's rule owns the form toggle |
 | Input validation | `src-tauri/src/validators.rs` | `validate_create_proxy`, `validate_update_proxy` | |
 | Frontend proxy form | `src/components/proxy/ProxyForm.tsx` | `ProxyForm` | Field validation + default ports |
 | Frontend proxy store | `src/stores/proxy-store.ts` | `useProxyStore` | Zustand store |

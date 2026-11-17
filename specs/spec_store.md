@@ -5,6 +5,7 @@
 |------|--------|--------|
 | 2026-04-04 | Initial spec | Phase 2d |
 | 2026-11-17 | Add `hostname_settings` (HSTS + three security header switches, per hostname) | Ticket #20 |
+| 2026-11-17 | Add `get` / `set_hsts` to `hostname_settings_repo`; HSTS is now emitted by the generator | Ticket #23 |
 
 ## Feature Description
 
@@ -76,8 +77,10 @@ SQLite 数据持久化层，负责所有配置数据的存储、查询、迁移�
 | Function | Input | Output | Notes |
 |----------|-------|--------|-------|
 | `list_all()` | — | `HashMap<String, HostnameSettings>` | key = hostname；无行 = 三个安全头全开、HSTS 关 |
+| `get(hostname)` | hostname | `Option<HostnameSettings>` | 单行读取；没有行返回 `None` |
+| `set_hsts(hostname, enabled, max_age, include_subdomains)` | 四个值 | `HostnameSettings` | Upsert，只改三个 HSTS 列 + `updated_at`；新建行时三个安全头取列默认（全开），`created_at` 只在首次写入 |
 
-`hostname_settings` 是 **hostname 主键**的表（`hsts_enabled` / `hsts_max_age` / `hsts_include_subdomains` / `sec_nosniff` / `sec_referrer_policy` / `sec_frame_options` + `created_at` / `updated_at`）。DDL 用 `CREATE TABLE IF NOT EXISTS` 幂等创建，旧库升级后自动就位；默认值：三个安全头 `1`（开），HSTS `0`（关），`hsts_max_age` 300。本版只有生成器读取，UI 在后续票落地。
+`hostname_settings` 是 **hostname 主键**的表（`hsts_enabled` / `hsts_max_age` / `hsts_include_subdomains` / `sec_nosniff` / `sec_referrer_policy` / `sec_frame_options` + `created_at` / `updated_at`）。DDL 用 `CREATE TABLE IF NOT EXISTS` 幂等创建，旧库升级后自动就位；默认值：三个安全头 `1`（开），HSTS `0`（关），`hsts_max_age` 300。生成器读取整张表；规则表单通过 `get_hostname_hsts` / `set_hostname_hsts` 读写 HSTS，`set_hsts` 不碰安全头开关，避免把用户的其他选择重置。
 
 ### Backup & Export
 

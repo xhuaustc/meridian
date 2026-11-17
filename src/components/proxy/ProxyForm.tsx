@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, X } from 'lucide-react';
+import { ArrowLeft, Plus, Shield, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
@@ -11,10 +11,17 @@ import { useCertStore } from '../../stores/cert-store';
 import { useAccessStore } from '../../stores/access-store';
 import { useToastStore } from '../../stores/toast-store';
 import { useApiError } from '../../hooks/useApiError';
-import { checkPortConflict, checkForceHttps, checkHostnameExists, createHost, previewCreateProxy, previewUpdateProxy, getRequestParamDefaults } from '../../lib/api';
-import { Dialog } from '../ui/Dialog';
+import { checkPortConflict, checkForceHttps, checkHostnameExists, createHost, previewCreateProxy, previewUpdateProxy, getRequestParamDefaults, getHostnameHsts, setHostnameHsts } from '../../lib/api';
+import { Dialog, ConfirmDialog } from '../ui/Dialog';
 import { cn } from '../../lib/utils';
-import type { ProxyRule, ProxyType, TlsMode, CreateProxyRule, UpdateProxyRule, UpstreamTarget, UpstreamScheme, ConfigPreview, ForceHttpsCheck, RequestParamCatalog, RequestParamInfo, RequestParamKey } from '../../types';
+import type { ProxyRule, ProxyType, TlsMode, CreateProxyRule, UpdateProxyRule, UpstreamTarget, UpstreamScheme, ConfigPreview, ForceHttpsCheck, HostnameHstsCheck, RequestParamCatalog, RequestParamInfo, RequestParamKey } from '../../types';
+
+/** Whole days until an ISO timestamp; negative when it has passed. */
+function daysUntil(dateStr: string): number {
+  return Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+}
+
+const HSTS_MAX_AGE_LIMIT = 31_536_000;
 
 type FormProxyType = 'http' | 'https' | 'tcp' | 'udp';
 
@@ -154,6 +161,17 @@ export function ProxyForm({ rule }: ProxyFormProps) {
   const [keepAlive, setKeepAlive] = useState(rule?.keep_alive ?? false);
   const [forceHttps, setForceHttps] = useState(rule?.force_https ?? false);
   const [forceHttpsCheck, setForceHttpsCheck] = useState<ForceHttpsCheck | null>(null);
+  const [hstsCheck, setHstsCheck] = useState<HostnameHstsCheck | null>(null);
+  const [hstsEnabled, setHstsEnabled] = useState(false);
+  const [hstsMaxAge, setHstsMaxAge] = useState('300');
+  const [hstsIncludeSubdomains, setHstsIncludeSubdomains] = useState(false);
+  /** Domain whose stored HSTS values the local fields were initialised from. */
+  const hstsLoadedDomain = useRef<string | null>(null);
+  const [pendingHstsDisable, setPendingHstsDisable] = useState(false);
+  const [pendingTlsChange, setPendingTlsChange] = useState<{
+    formType: FormProxyType;
+    tlsMode: TlsMode;
+  } | null>(null);
   const [portWarning, setPortWarning] = useState('');
   const [saving, setSaving] = useState(false);
   const [configPreview, setConfigPreview] = useState<ConfigPreview | null>(null);
@@ -210,20 +228,102 @@ export function ProxyForm({ rule }: ProxyFormProps) {
     }
   }, [rule]);
 
-  useEffect(() => {
-    const { defaultTls } = fromFormType(formType);
-    if (formType === 'https') {
-      if (tlsMode === 'none') setTlsMode('terminate');
-    } else if (formType === 'http') {
-      setTlsMode('none');
-    } else {
-      setTlsMode(defaultTls);
-    }
-  }, [formType]);
-
   const isStream = formType === 'tcp' || formType === 'udp';
   const showTls = formType === 'http' || formType === 'https';
   const showWebsocket = formType === 'http' || formType === 'https';
+
+  // HSTS is stored per hostname, so the form asks the backend for the stored
+  // values and for the TLS-terminating rule that owns the toggle. Only rules
+  // that terminate TLS can emit the header, so nothing is asked for the others.
+  useEffect(() => {
+    const target = domain.trim();
+    if (isStream || tlsMode !== 'terminate' || !target) {
+      setHstsCheck(null);
+      return;
+    }
+    if (hstsLoadedDomain.current !== target) {
+      // Never show (or save) the previous hostname's values while the new
+      // domain's answer is in flight.
+      setHstsCheck(null);
+    }
+    let cancelled = false;
+    getHostnameHsts(target)
+      .then((check) => {
+        if (cancelled) return;
+        setHstsCheck(check);
+        if (hstsLoadedDomain.current !== target) {
+          setHstsEnabled(check.enabled);
+          setHstsMaxAge(String(check.max_age));
+          setHstsIncludeSubdomains(check.include_subdomains);
+          hstsLoadedDomain.current = target;
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setHstsCheck(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isStream, tlsMode, domain]);
+
+  const isHstsOwner =
+    hstsCheck !== null &&
+    (hstsCheck.owner_rule_id === null || hstsCheck.owner_rule_id === rule?.id);
+  const hstsActiveForDomain = isHstsOwner
+    ? hstsEnabled
+    : hstsCheck?.enabled ?? false;
+  const hstsOwnedElsewhere = hstsCheck !== null && !isHstsOwner && hstsCheck.enabled;
+
+  // HSTS locks the browser to HTTPS, so a certificate that is about to expire
+  // makes the site unreachable in a way the visitor cannot click through.
+  const hstsCertificateWarning = useMemo(() => {
+    if (!hstsActiveForDomain || tlsMode !== 'terminate' || !certificateId) return null;
+    const cert = certificates.find((candidate) => candidate.id === certificateId);
+    if (!cert) return null;
+    const days = daysUntil(cert.expires_at);
+    return days <= 30 ? Math.max(days, 0) : null;
+  }, [hstsActiveForDomain, tlsMode, certificateId, certificates]);
+
+  const applyFormType = (next: FormProxyType) => {
+    setFormType(next);
+    if (!isEdit) {
+      const defaults: Record<FormProxyType, string> = { http: '80', https: '443', tcp: '', udp: '' };
+      setListenPort(defaults[next]);
+    }
+  };
+
+  // A rule that stops terminating TLS stops serving HTTPS for its port, while
+  // browsers that already cached the hostname's HSTS keep enforcing HTTPS.
+  // That is a warning, not a veto.
+  const changeTls = (nextType: FormProxyType, nextTls: TlsMode) => {
+    if (tlsMode === 'terminate' && nextTls !== 'terminate' && hstsCheck?.enabled) {
+      setPendingTlsChange({ formType: nextType, tlsMode: nextTls });
+      return;
+    }
+    if (nextType !== formType) applyFormType(nextType);
+    setTlsMode(nextTls);
+  };
+
+  const selectFormType = (next: FormProxyType) => {
+    if (next === formType) return;
+    const nextTls: TlsMode = next === 'https'
+      ? (tlsMode === 'none' ? 'terminate' : tlsMode)
+      : 'none';
+    changeTls(next, nextTls);
+  };
+
+  const selectTlsMode = (next: TlsMode) => {
+    if (next === tlsMode) return;
+    changeTls(formType, next);
+  };
+
+  const handleHstsToggle = (next: boolean) => {
+    if (!next && hstsCheck?.enabled) {
+      setPendingHstsDisable(true);
+      return;
+    }
+    setHstsEnabled(next);
+  };
 
   // The redirect block is synthesised at generation time and never stored as a
   // rule, so ask the backend whether it would actually be emitted for this
@@ -417,6 +517,27 @@ export function ProxyForm({ rule }: ProxyFormProps) {
     }
     if (!isStream && !domain.trim()) errs.domain = true;
 
+    // HSTS is written separately, after the rule itself, and only when the
+    // backend has answered for exactly this domain.
+    const hstsTargetDomain = domain.trim();
+    const hstsMaxAgeValue = parseInt(hstsMaxAge, 10);
+    const hstsWritable =
+      !isStream &&
+      tlsMode === 'terminate' &&
+      hstsTargetDomain !== '' &&
+      hstsCheck !== null &&
+      hstsLoadedDomain.current === hstsTargetDomain &&
+      isHstsOwner;
+    if (
+      hstsWritable &&
+      hstsEnabled &&
+      (!Number.isInteger(hstsMaxAgeValue) ||
+        hstsMaxAgeValue < 1 ||
+        hstsMaxAgeValue > HSTS_MAX_AGE_LIMIT)
+    ) {
+      errs.hstsMaxAge = true;
+    }
+
     // A custom request parameter must carry a unit; a bare number is a mistake,
     // not "0 = unlimited" (that state has its own button).
     const invalidParams = collectInvalidRequestParams(errs);
@@ -448,6 +569,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
       else if (errs.listenPort && !portWarning) addToast('error', t('proxyForm.portRequired'));
       else if (errs.listenPort && portWarning) addToast('error', t('proxyForm.portConflictWarning', { message: portWarning }));
       else if (errs.domain) addToast('error', t('proxyForm.domainHint'));
+      else if (errs.hstsMaxAge) addToast('error', t('proxyForm.hstsMaxAgeInvalid'));
       else if (invalidParams.length > 0) {
         addToast('error', requestParamErrorMessage(invalidParams[0]));
       }
@@ -464,19 +586,45 @@ export function ProxyForm({ rule }: ProxyFormProps) {
       } else {
         await createProxy(input);
         addToast('success', t('proxyForm.createSuccess'));
+      }
 
-        // Check if domain needs a hosts entry
-        if (domain.trim() && !isStream) {
-          try {
-            const existing = await checkHostnameExists(domain.trim());
-            if (!existing) {
-              setHostsPromptDomain(domain.trim());
-              setHostsPromptIp('127.0.0.1');
-              setShowHostsPrompt(true);
-              return; // Don't navigate yet — show dialog first
-            }
-          } catch { /* ignore check failure */ }
+      // The HSTS switch belongs to the hostname, so it is saved after the rule
+      // it hangs off exists. Only a change is written; opening the form and
+      // saving must not rewrite (or turn off) another rule's HSTS row.
+      if (hstsWritable) {
+        const maxAge = hstsMaxAgeValue || hstsCheck.max_age;
+        const hstsChanged =
+          hstsEnabled !== hstsCheck.enabled ||
+          (hstsEnabled &&
+            (maxAge !== hstsCheck.max_age ||
+              hstsIncludeSubdomains !== hstsCheck.include_subdomains));
+        if (hstsChanged) {
+          await setHostnameHsts(
+            hstsTargetDomain,
+            hstsEnabled,
+            maxAge,
+            hstsIncludeSubdomains,
+          );
+          setHstsCheck({
+            ...hstsCheck,
+            enabled: hstsEnabled,
+            max_age: maxAge,
+            include_subdomains: hstsIncludeSubdomains,
+          });
         }
+      }
+
+      // Check if a newly created rule's domain needs a hosts entry.
+      if (!isEdit && domain.trim() && !isStream) {
+        try {
+          const existing = await checkHostnameExists(domain.trim());
+          if (!existing) {
+            setHostsPromptDomain(domain.trim());
+            setHostsPromptIp('127.0.0.1');
+            setShowHostsPrompt(true);
+            return; // Don't navigate yet — show dialog first
+          }
+        } catch { /* ignore check failure */ }
       }
 
       navigate('/');
@@ -535,13 +683,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => {
-                  setFormType(opt.value);
-                  if (!isEdit) {
-                    const defaults: Record<FormProxyType, string> = { http: '80', https: '443', tcp: '', udp: '' };
-                    setListenPort(defaults[opt.value]);
-                  }
-                }}
+                onClick={() => selectFormType(opt.value)}
                 className={cn(
                   'flex-1 py-[7px] px-3 text-center text-[12px] cursor-pointer border-r border-border last:border-r-0',
                   formType === opt.value
@@ -790,7 +932,7 @@ export function ProxyForm({ rule }: ProxyFormProps) {
                 <button
                   key={opt.value}
                   type="button"
-                  onClick={() => setTlsMode(opt.value)}
+                  onClick={() => selectTlsMode(opt.value)}
                   className={cn(
                     'flex-1 py-[7px] px-3 text-center text-[12px] cursor-pointer border-r border-border last:border-r-0',
                     tlsMode === opt.value
@@ -802,6 +944,11 @@ export function ProxyForm({ rule }: ProxyFormProps) {
                 </button>
               ))}
             </div>
+            {tlsMode === 'passthrough' && (
+              <p className="text-[11px] text-text-tertiary mt-1">
+                {t('proxyForm.hstsPassthroughHint')}
+              </p>
+            )}
           </div>
           {tlsMode === 'terminate' && (
             <>
@@ -821,6 +968,85 @@ export function ProxyForm({ rule }: ProxyFormProps) {
                   ))}
                 </Select>
               </div>
+              {hstsCheck !== null && (isHstsOwner || hstsOwnedElsewhere) && (
+                <div className="mb-4 mt-6 pt-4 border-t border-border">
+                  <div className="flex items-center gap-2">
+                    {isHstsOwner ? (
+                      <Toggle checked={hstsEnabled} onChange={handleHstsToggle} />
+                    ) : (
+                      <Shield className="w-3.5 h-3.5 text-text-tertiary" />
+                    )}
+                    <label className="text-[12px] font-medium text-text-secondary">
+                      {t('proxyForm.hsts')}
+                    </label>
+                    <span className="text-[11px] text-text-tertiary">
+                      {t('proxyForm.hstsHostnameScope', { domain: domain.trim() })}
+                    </span>
+                  </div>
+                  {hstsOwnedElsewhere ? (
+                    <p className="text-[11px] text-warning mt-1 ml-11">
+                      {t('proxyForm.hstsOwnedByOther', {
+                        name: hstsCheck?.owner_rule_name ?? '',
+                        maxAge: hstsCheck?.max_age ?? 0,
+                        scope: hstsCheck?.include_subdomains
+                          ? t('proxyForm.hstsIncludingSubdomains')
+                          : '',
+                      })}
+                    </p>
+                  ) : null}
+                  {isHstsOwner && (
+                    <>
+                      <p className="text-[11px] text-text-tertiary mt-1 ml-11">
+                        {t('proxyForm.hstsDesc')}
+                      </p>
+                      {hstsEnabled && (
+                        <div className="grid grid-cols-2 gap-3 mt-3 ml-11">
+                          <div>
+                            <label className="block text-[12px] font-medium text-text-secondary mb-1">
+                              {t('proxyForm.hstsMaxAge')}
+                            </label>
+                            <Input
+                              type="number"
+                              value={hstsMaxAge}
+                              onChange={(e) => { setHstsMaxAge(e.target.value); clearError('hstsMaxAge'); }}
+                              className={errors.hstsMaxAge ? 'border-error' : ''}
+                            />
+                            <p className="text-[11px] text-text-tertiary mt-1">
+                              {t('proxyForm.hstsMaxAgeHint')}
+                            </p>
+                          </div>
+                          <div className="mt-6">
+                            <div className="flex items-center gap-2">
+                              <Toggle
+                                checked={hstsIncludeSubdomains}
+                                onChange={setHstsIncludeSubdomains}
+                              />
+                              <label className="text-[12px] font-medium text-text-secondary">
+                                {t('proxyForm.hstsIncludeSubdomains')}
+                              </label>
+                            </div>
+                            <p className="text-[11px] text-text-tertiary mt-1">
+                              {t('proxyForm.hstsIncludeSubdomainsHint')}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      {!hstsEnabled && hstsCheck?.enabled && (
+                        <p className="text-[11px] text-warning mt-1 ml-11">
+                          {t('proxyForm.hstsWillTurnOff')}
+                        </p>
+                      )}
+                    </>
+                  )}
+                  {hstsCertificateWarning !== null && (
+                    <p className="text-[11px] text-warning mt-2">
+                      {hstsCertificateWarning === 0
+                        ? t('proxyForm.hstsCertExpired')
+                        : t('proxyForm.hstsCertExpiring', { days: hstsCertificateWarning })}
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="mb-4 mt-6">
                 <div className="flex items-center gap-2">
                   <Toggle checked={forceHttps} onChange={setForceHttps} />
@@ -1120,6 +1346,35 @@ export function ProxyForm({ rule }: ProxyFormProps) {
           />
         </div>
       </Dialog>
+
+      {/* HSTS warns but never blocks: turning it off only changes future
+          responses, while browsers keep the cached policy until max-age expires. */}
+      <ConfirmDialog
+        open={pendingHstsDisable}
+        onClose={() => setPendingHstsDisable(false)}
+        onConfirm={() => setHstsEnabled(false)}
+        title={t('proxyForm.hstsDisableTitle')}
+        message={t('proxyForm.hstsDisableMessage')}
+        confirmText={t('proxyForm.hstsDisableConfirm')}
+        danger
+      />
+
+      {/* The rule stops terminating TLS while the hostname's HSTS row is on:
+          an endpoint covered by the cached policy can no longer be reached, and
+          the lock lasts for the stored max-age. Continue is allowed. */}
+      <ConfirmDialog
+        open={pendingTlsChange !== null}
+        onClose={() => setPendingTlsChange(null)}
+        onConfirm={() => {
+          if (!pendingTlsChange) return;
+          if (pendingTlsChange.formType !== formType) applyFormType(pendingTlsChange.formType);
+          setTlsMode(pendingTlsChange.tlsMode);
+        }}
+        title={t('proxyForm.hstsNonTlsTitle')}
+        message={t('proxyForm.hstsNonTlsMessage', { maxAge: hstsCheck?.max_age ?? 300 })}
+        confirmText={t('proxyForm.hstsNonTlsConfirm')}
+        danger
+      />
     </div>
   );
 }

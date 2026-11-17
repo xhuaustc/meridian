@@ -505,6 +505,48 @@ pub fn assert_every_add_header_applies_to_error_responses(config: &str) {
     }
 }
 
+/// Whether a parsed `server` block terminates TLS (`listen ... ssl`).
+pub fn server_terminates_tls(block: &ConfigBlock<'_>) -> bool {
+    block.directives().any(|statement| {
+        directive_name(statement) == "listen"
+            && statement
+                .split_whitespace()
+                .any(|argument| argument == "ssl")
+    })
+}
+
+/// How many `Strict-Transport-Security` headers a block declares directly.
+pub fn hsts_count(block: &ConfigBlock<'_>) -> usize {
+    block
+        .directives()
+        .filter(|statement| {
+            directive_name(statement) == "add_header"
+                && statement.contains("Strict-Transport-Security")
+        })
+        .count()
+}
+
+/// Assert the HSTS invariant across every `server` block in `config`:
+/// TLS-terminating blocks carry it exactly once, and plain blocks never do.
+///
+/// Header counts stay per block on purpose. A hostname served on several TLS
+/// ports generates one `server` block per port, and each block is a separate
+/// HTTP endpoint that must send its own header; "exactly once" therefore means
+/// once per TLS server block, not once per hostname or once per rule.
+pub fn assert_hsts_only_in_tls_server_blocks(config: &str) {
+    for server in blocks(config, "server") {
+        let tls = server_terminates_tls(&server);
+        let count = hsts_count(&server);
+        assert_eq!(
+            count,
+            usize::from(tls),
+            "HSTS must appear exactly once on every TLS-terminating server block and \
+             never on a plain one; block `{}` has {count}",
+            server.header()
+        );
+    }
+}
+
 fn directive_name(statement: &str) -> &str {
     statement.split_whitespace().next().unwrap_or_default()
 }
@@ -744,6 +786,57 @@ server {
     fn does_not_mistake_a_quoted_always_for_the_flag() {
         assert_every_add_header_applies_to_error_responses(
             "server {\n    add_header X-A \"always\";\n}",
+        );
+    }
+
+    const HSTS_CONFIG: &str = r#"
+server {
+    listen 443 ssl;
+    server_name app.local;
+    add_header Strict-Transport-Security "max-age=300" always;
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+    }
+}
+server {
+    listen 80;
+    server_name app.local;
+}
+"#;
+
+    #[test]
+    fn hsts_counts_only_inside_the_block_being_asked_about() {
+        let server = block(HSTS_CONFIG, "server").expect("first server");
+        assert!(server_terminates_tls(&server));
+        assert_eq!(hsts_count(&server), 1);
+        assert_eq!(
+            count_directive_in_blocks(HSTS_CONFIG, "server", "add_header"),
+            1
+        );
+        assert_hsts_only_in_tls_server_blocks(HSTS_CONFIG);
+    }
+
+    #[test]
+    #[should_panic(expected = "HSTS must appear exactly once")]
+    fn rejects_hsts_on_a_plain_server_block() {
+        assert_hsts_only_in_tls_server_blocks(
+            "server {\n    listen 80;\n    add_header Strict-Transport-Security \"max-age=300\" always;\n}",
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "HSTS must appear exactly once")]
+    fn rejects_hsts_missing_from_a_tls_server_block() {
+        assert_hsts_only_in_tls_server_blocks("server {\n    listen 443 ssl;\n}");
+    }
+
+    #[test]
+    #[should_panic(expected = "HSTS must appear exactly once")]
+    fn rejects_hsts_repeated_inside_one_server_block() {
+        assert_hsts_only_in_tls_server_blocks(
+            "server {\n    listen 443 ssl;\n    \
+             add_header Strict-Transport-Security \"max-age=300\" always;\n    \
+             add_header Strict-Transport-Security \"max-age=600\" always;\n}",
         );
     }
 }
