@@ -169,17 +169,9 @@ mod tests {
             })
     }
 
-    /// The generated main config must be accepted by the nginx binary we ship.
-    /// Skips (loudly) when the sidecar has not been built on this machine.
-    #[test]
-    fn test_generated_main_config_is_accepted_by_the_bundled_nginx() {
-        let Some(nginx) = repo_sidecar() else {
-            eprintln!(
-                "skipping: run scripts/prepare-nginx.sh to validate the generated config against the sidecar"
-            );
-            return;
-        };
-
+    /// Generate a config for the given capabilities and hand it to the real
+    /// sidecar, failing with nginx's own diagnostics when it is rejected.
+    fn assert_sidecar_accepts(nginx: &Path, capabilities: Capabilities) -> String {
         let data_dir =
             std::env::temp_dir().join(format!("meridian-maincfg-{}", uuid::Uuid::new_v4()));
         let nginx_dir = data_dir.join("nginx");
@@ -196,18 +188,11 @@ mod tests {
         std::fs::write(nginx_dir.join("conf.d/.keep.conf"), "# placeholder\n").unwrap();
         std::fs::write(nginx_dir.join("stream.d/.keep.conf"), "# placeholder\n").unwrap();
 
-        let config = generate_main_config(
-            &data_dir,
-            "1",
-            Capabilities {
-                probed: true,
-                http2: true,
-            },
-        );
+        let config = generate_main_config(&data_dir, "1", capabilities);
         let config_path = nginx_dir.join("nginx.conf");
         std::fs::write(&config_path, &config).unwrap();
 
-        let output = std::process::Command::new(&nginx)
+        let output = std::process::Command::new(nginx)
             .arg("-t")
             .arg("-c")
             .arg(&config_path)
@@ -224,6 +209,62 @@ mod tests {
             nginx.display(),
             stderr
         );
+        config
+    }
+
+    /// What the shipped binary advertises and what the generator emits must
+    /// agree, and the result must still be valid configuration. Skips (loudly)
+    /// when the sidecar has not been built on this machine.
+    #[test]
+    fn test_generated_main_config_matches_what_the_sidecar_supports() {
+        let Some(nginx) = repo_sidecar() else {
+            eprintln!(
+                "skipping: run scripts/prepare-nginx.sh to validate the generated config against the sidecar"
+            );
+            return;
+        };
+
+        let probe = std::process::Command::new(&nginx)
+            .arg("-V")
+            .output()
+            .expect("failed to run nginx -V");
+        let probe_output = format!(
+            "{}{}",
+            String::from_utf8_lossy(&probe.stdout),
+            String::from_utf8_lossy(&probe.stderr)
+        );
+        let capabilities = crate::nginx_manager::parse_capabilities(&probe_output);
+        assert!(
+            capabilities.probed,
+            "sidecar did not report a configure line: {}",
+            probe_output
+        );
+
+        let config = assert_sidecar_accepts(&nginx, capabilities);
+        assert_eq!(
+            config.contains("http2 on;"),
+            capabilities.http2,
+            "generator and probe disagree about HTTP/2 support"
+        );
+    }
+
+    /// A build without HTTP/2 must still produce config the engine accepts:
+    /// the directive is omitted rather than emitted and left to fail.
+    #[test]
+    fn test_config_without_http2_is_still_accepted_by_the_sidecar() {
+        let Some(nginx) = repo_sidecar() else {
+            eprintln!("skipping: run scripts/prepare-nginx.sh to validate the generated config");
+            return;
+        };
+
+        let config = assert_sidecar_accepts(
+            &nginx,
+            Capabilities {
+                probed: true,
+                http2: false,
+            },
+        );
+        assert!(!config.contains("http2"));
     }
 
     #[test]

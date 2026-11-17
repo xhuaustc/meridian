@@ -39,6 +39,7 @@ export function SettingsPage() {
   const [workerProcesses, setWorkerProcesses] = useState('2');
   const [appVersion, setAppVersion] = useState('');
   const [capabilities, setCapabilities] = useState<EngineCapabilities | null>(null);
+  const [capabilitiesLoading, setCapabilitiesLoading] = useState(true);
 
   useEffect(() => {
     // Load app version
@@ -56,8 +57,9 @@ export function SettingsPage() {
     });
     api
       .getEngineCapabilities()
-      .then(setCapabilities)
-      .catch(() => setCapabilities(null));
+      .then((caps) => setCapabilities(caps))
+      .catch(() => setCapabilities(null))
+      .finally(() => setCapabilitiesLoading(false));
   }, []);
 
   const handleExport = async () => {
@@ -290,11 +292,13 @@ export function SettingsPage() {
               capabilities?.http2 ? 'text-success' : 'text-text-tertiary',
             )}
           >
-            {!capabilities?.probed
-              ? t('settings.http2Unknown')
-              : capabilities.http2
-                ? t('settings.http2Enabled')
-                : t('settings.http2Unsupported')}
+            {capabilitiesLoading
+              ? '—'
+              : !capabilities?.probed
+                ? t('settings.http2Unknown')
+                : capabilities.http2
+                  ? t('settings.http2Enabled')
+                  : t('settings.http2Unsupported')}
           </span>
         </div>
       </section>

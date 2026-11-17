@@ -49,10 +49,29 @@ pub struct Capabilities {
 /// reported as "not probed".
 pub fn parse_capabilities(version_output: &str) -> Capabilities {
     let probed = version_output.contains("configure arguments");
+    if !probed {
+        return Capabilities::default();
+    }
+    // The module has existed since 1.9.5, but the `http2 on;` directive only
+    // arrived in 1.25.1 (older builds spell it `listen ... http2`). Emitting the
+    // directive against an older build would fail `nginx -t`, so both facts are
+    // required before the generator is allowed to use it.
     Capabilities {
         probed,
-        http2: probed && version_output.contains("--with-http_v2_module"),
+        http2: version_output.contains("--with-http_v2_module")
+            && parse_nginx_version(version_output).is_some_and(|version| version >= (1, 25, 1)),
     }
+}
+
+/// Extract the numeric version from `nginx version: nginx/1.26.2`.
+fn parse_nginx_version(version_output: &str) -> Option<(u32, u32, u32)> {
+    let rest = &version_output[version_output.find("nginx/")? + "nginx/".len()..];
+    let raw: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
+    let mut parts = raw.split('.').filter_map(|part| part.parse::<u32>().ok());
+    Some((parts.next()?, parts.next()?, parts.next().unwrap_or(0)))
 }
 
 static CAPABILITIES: std::sync::OnceLock<Capabilities> = std::sync::OnceLock::new();
@@ -661,6 +680,7 @@ fn parse_etime(etime: &str) -> Option<u64> {
 mod tests {
     use super::*;
 
+    use std::time::Duration;
     const V_WITH_HTTP2: &str = "nginx version: nginx/1.26.2\nbuilt by clang 21.0.0\nconfigure arguments: --prefix=. --with-http_ssl_module --with-http_v2_module --with-stream\n";
 
     const V_WITHOUT_HTTP2: &str = "nginx version: nginx/1.26.2\nbuilt by gcc\nconfigure arguments: --prefix=. --with-http_ssl_module\n";
@@ -685,7 +705,24 @@ mod tests {
         assert!(!capabilities.probed);
         assert!(!capabilities.http2);
     }
-    use std::time::Duration;
+
+    const V_HTTP2_OLD_DIRECTIVE: &str = "nginx version: nginx/1.24.0\nbuilt by gcc\nconfigure arguments: --prefix=. --with-http_v2_module\n";
+
+    const V_HTTP2_NEW_DIRECTIVE_BOUNDARY: &str = "nginx version: nginx/1.25.1\nbuilt by gcc\nconfigure arguments: --prefix=. --with-http_v2_module\n";
+
+    #[test]
+    fn reports_http2_unavailable_when_the_build_predates_the_directive() {
+        let capabilities = parse_capabilities(V_HTTP2_OLD_DIRECTIVE);
+        assert!(capabilities.probed);
+        assert!(!capabilities.http2);
+    }
+
+    #[test]
+    fn reports_http2_available_from_the_version_that_introduced_the_directive() {
+        let capabilities = parse_capabilities(V_HTTP2_NEW_DIRECTIVE_BOUNDARY);
+        assert!(capabilities.probed);
+        assert!(capabilities.http2);
+    }
 
     #[test]
     fn wait_until_process_exits_stops_polling_after_process_disappears() {
