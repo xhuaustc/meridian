@@ -107,6 +107,25 @@ export interface HostnameHstsSettings {
   updated_at: string;
 }
 
+/**
+ * One stored hostname setting plus how many proxy rules still name the
+ * hostname. `rule_count` counts disabled rules too: they are still part of the
+ * configuration the user can turn back on.
+ */
+export interface HostnameSettingsEntry extends HostnameHstsSettings {
+  rule_count: number;
+  /** No rule references the hostname any more, so cleanup may delete the row. */
+  is_orphan: boolean;
+}
+
+/** The settings page's domain list and the counts its cleanup dialog names. */
+export interface HostnameSettingsOverview {
+  entries: HostnameSettingsEntry[];
+  orphan_count: number;
+  /** Orphan rows with HSTS on: deleting them leaves the browser cache alone. */
+  orphan_hsts_count: number;
+}
+
 export interface UpstreamTarget {
   host: string;
   port: number;

@@ -14,6 +14,7 @@
 | 2026-11-17 | Synthesise a port-80 308 redirect block for rules with `force_https` | Ticket #22 |
 | 2026-11-17 | Default security response headers (3, `always`) with per-hostname switches | Ticket #20 |
 | 2026-11-17 | Emit `Strict-Transport-Security` on TLS-terminating server blocks only, behind a per-hostname switch | Ticket #23 |
+| 2026-11-17 | Add the settings-page overview of stored hostname settings: rule reference counts, orphan flag and orphan HSTS count | Ticket #25 |
 
 ## Feature Description
 
@@ -339,6 +340,7 @@ server {
 | Error page generation | `src-tauri/src/config_engine/error_pages.rs` | `write_error_pages()` | Writes `nginx/html/502.html` |
 | Security response headers | `src-tauri/src/config_engine/security_headers.rs` | `response_headers()` | Single source of the header list; column → name/value mapping lives here, HSTS included |
 | HSTS ownership check | `src-tauri/src/config_engine/hsts.rs` | `owner_rule()`, `check()` | Lowest TLS port owns the hostname's switch; backs `get_hostname_hsts` / `set_hostname_hsts` / `list_hsts_hostnames` |
+| Hostname settings overview | `src-tauri/src/config_engine/hostname_settings.rs` | `overview()` | Defines the list's orphan (no rule, enabled or disabled, names the hostname); cleanup applies the same predicate in SQL |
 | Config orchestration | `src-tauri/src/config_engine/mod.rs` | `generate_all_configs()`, `generate_all_configs_with_settings()` | Passes data_dir, worker_processes and the hostname settings map to sub-generators |
 | Port conflict detection | `src-tauri/src/config_engine/mod.rs` | `validate_port_conflicts()` | |
 | Config write + rollback | `src-tauri/src/config_engine/mod.rs` | `write_configs()`, `restore_previous_configs()` | |

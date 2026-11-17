@@ -179,6 +179,41 @@ pub async fn list_hsts_hostnames(state: State<'_, AppState>) -> Result<Vec<Strin
     Ok(config_engine::hsts::enabled_hostnames(&settings))
 }
 
+/// Every stored hostname setting, how many rules still reference it, and the
+/// cleanup counts.
+///
+/// The settings page is the only screen that can reach a row whose rules no
+/// longer expose the HSTS form (the last TLS rule was deleted or changed to
+/// non-TLS). The rule list is therefore the backend's, not something the
+/// frontend derives from a second copy of the rules.
+#[tauri::command]
+pub async fn list_hostname_settings(
+    state: State<'_, AppState>,
+) -> Result<config_engine::hostname_settings::HostnameSettingsOverview, AppError> {
+    let db = state.get_conn()?;
+    let settings = hostname_settings_repo::list_all(&db)?;
+    let rules = proxy_repo::list_all(&db)?;
+    Ok(config_engine::hostname_settings::overview(
+        &settings, &rules,
+    ))
+}
+
+/// Delete the hostname settings rows no rule references any more, then
+/// regenerate the configs through the usual apply path.
+///
+/// Regeneration is expected to leave generated files untouched (an orphan row
+/// has no server block to feed), but running the established path keeps the
+/// on-disk config in step with the database. Rows still referenced by a rule
+/// are skipped inside the DELETE itself.
+#[tauri::command]
+pub async fn cleanup_orphan_hostname_settings(
+    state: State<'_, AppState>,
+) -> Result<usize, AppError> {
+    apply_proxy_change(&state, |db| {
+        hostname_settings_repo::delete_orphans(db).map(|deleted| deleted.len())
+    })
+}
+
 #[tauri::command]
 pub async fn create_proxy(
     input: CreateProxyRule,

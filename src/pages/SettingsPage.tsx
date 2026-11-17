@@ -6,6 +6,7 @@ import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { save, open } from '@tauri-apps/plugin-dialog';
 import { ContentToolbar } from '../components/layout/ContentToolbar';
 import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
 import { Toggle } from '../components/ui/Toggle';
 import { ConfirmDialog } from '../components/ui/Dialog';
 import { useSettingsStore } from '../stores/settings-store';
@@ -18,7 +19,7 @@ import { useHostsStore } from '../stores/hosts-store';
 import * as api from '../lib/api';
 import { cn } from '../lib/utils';
 import { REQUEST_PARAM_HINT_KEYS, REQUEST_PARAM_LABEL_KEYS, isValidRequestParamValue } from '../lib/requestParams';
-import type { RecoveryPreview, EngineCapabilities, RequestParamCatalog, RequestParamKey, RequestParamValues } from '../types';
+import type { RecoveryPreview, EngineCapabilities, HostnameSettingsEntry, HostnameSettingsOverview, RequestParamCatalog, RequestParamKey, RequestParamValues } from '../types';
 
 export function SettingsPage() {
   const { t, i18n } = useTranslation('common');
@@ -26,6 +27,7 @@ export function SettingsPage() {
   const addToast = useToastStore((s) => s.addToast);
   const formatError = useApiError();
   const fetchProxies = useProxyStore((s) => s.fetchProxies);
+  const proxies = useProxyStore((s) => s.proxies);
   const fetchCertificates = useCertStore((s) => s.fetchCertificates);
   const fetchLists = useAccessStore((s) => s.fetchLists);
   const fetchEntries = useHostsStore((s) => s.fetchEntries);
@@ -44,6 +46,11 @@ export function SettingsPage() {
   const [requestParamCatalog, setRequestParamCatalog] = useState<RequestParamCatalog | null>(null);
   const [requestDefaultDrafts, setRequestDefaultDrafts] = useState<RequestParamValues | null>(null);
   const [requestDefaultErrors, setRequestDefaultErrors] = useState<Partial<Record<RequestParamKey, boolean>>>({});
+  const [hostnameOverview, setHostnameOverview] = useState<HostnameSettingsOverview | null>(null);
+  const [hostnameOverviewError, setHostnameOverviewError] = useState(false);
+  const [hstsBusyHostname, setHstsBusyHostname] = useState<string | null>(null);
+  const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [showOrphanCleanup, setShowOrphanCleanup] = useState(false);
 
   useEffect(() => {
     // Load app version
@@ -74,6 +81,72 @@ export function SettingsPage() {
       .catch(() => setCapabilities(null))
       .finally(() => setCapabilitiesLoading(false));
   }, []);
+
+  // Whether a stored hostname setting is an orphan depends on the rule list.
+  // Every rule create/update/delete goes through the proxy store, so refetch
+  // when that list changes; the initial (possibly empty) value loads the
+  // section on mount, including when the database has no rules at all.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listHostnameSettings()
+      .then((overview) => {
+        if (cancelled) return;
+        setHostnameOverview(overview);
+        setHostnameOverviewError(false);
+      })
+      .catch(() => {
+        if (!cancelled) setHostnameOverviewError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [proxies]);
+
+  const refreshHostnameSettings = async () => {
+    try {
+      const overview = await api.listHostnameSettings();
+      setHostnameOverview(overview);
+      setHostnameOverviewError(false);
+    } catch (e) {
+      setHostnameOverviewError(true);
+      addToast('error', formatError(e));
+    }
+  };
+
+  // The settings page is the only way to turn HSTS off for a hostname whose
+  // rules no longer expose the toggle (the last TLS rule was deleted or changed
+  // to non-TLS). The rule form owns the switch; this page owns the way back.
+  const handleDisableHsts = async (entry: HostnameSettingsEntry) => {
+    setHstsBusyHostname(entry.hostname);
+    try {
+      await api.setHostnameHsts(
+        entry.hostname,
+        false,
+        entry.hsts_max_age,
+        entry.hsts_include_subdomains,
+      );
+      addToast('success', t('settings.domainDisableHstsSuccess', { hostname: entry.hostname }));
+      await refreshHostnameSettings();
+    } catch (e) {
+      addToast('error', formatError(e));
+    } finally {
+      setHstsBusyHostname(null);
+    }
+  };
+
+  const handleCleanupOrphans = async () => {
+    setCleanupBusy(true);
+    try {
+      const removed = await api.cleanupOrphanHostnameSettings();
+      addToast('success', t('settings.domainCleanupSuccess', { count: removed }));
+      await refreshHostnameSettings();
+    } catch (e) {
+      addToast('error', formatError(e));
+    } finally {
+      setCleanupBusy(false);
+    }
+  };
 
   const handleExport = async () => {
     if (Array.from(passphrase).length < 12) {
@@ -223,6 +296,121 @@ export function SettingsPage() {
             </button>
           ))}
         </div>
+      </section>
+
+      {/* Domain Settings */}
+      <section className="mb-8">
+        <h2 className="text-[13px] font-semibold mb-3 pb-2 border-b border-border">
+          {t('settings.domainSettings')}
+        </h2>
+        <p className="text-[11px] text-text-tertiary mb-3">
+          {t('settings.domainSettingsDesc')}
+        </p>
+        {hostnameOverview === null ? (
+          <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3 text-[12px] text-text-tertiary">
+            {hostnameOverviewError ? t('settings.domainSettingsError') : t('common.loading')}
+          </div>
+        ) : hostnameOverview.entries.length === 0 ? (
+          <div className="bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-6 text-center text-[12px] text-text-tertiary">
+            {t('settings.domainSettingsEmpty')}
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-col gap-3">
+              {hostnameOverview.entries.map((entry) => (
+                <div
+                  key={entry.hostname}
+                  className="bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-medium truncate">{entry.hostname}</span>
+                        {entry.is_orphan && (
+                          <Badge variant="tcp" className="shrink-0">
+                            {t('settings.domainOrphan')}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-text-tertiary mt-0.5">
+                        {entry.is_orphan
+                          ? t('settings.domainOrphanDesc')
+                          : t('settings.domainRuleCount', { count: entry.rule_count })}
+                      </div>
+                    </div>
+                    {entry.hsts_enabled && (
+                      <Button
+                        size="sm"
+                        className="shrink-0 whitespace-nowrap"
+                        disabled={hstsBusyHostname === entry.hostname}
+                        onClick={() => handleDisableHsts(entry)}
+                      >
+                        {t('settings.domainDisableHsts')}
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                    <CoverageChip
+                      on={entry.hsts_enabled}
+                      label={
+                        entry.hsts_enabled
+                          ? entry.hsts_include_subdomains
+                            ? t('settings.domainHstsOnWithSubdomains', { seconds: entry.hsts_max_age })
+                            : t('settings.domainHstsOn', { seconds: entry.hsts_max_age })
+                          : t('settings.domainHstsOff')
+                      }
+                    />
+                    <CoverageChip
+                      on={entry.sec_nosniff}
+                      label={t('settings.domainHeaderNosniff')}
+                      stateLabel={entry.sec_nosniff
+                        ? t('settings.domainHeaderStateOn')
+                        : t('settings.domainHeaderStateOff')}
+                    />
+                    <CoverageChip
+                      on={entry.sec_referrer_policy}
+                      label={t('settings.domainHeaderReferrer')}
+                      stateLabel={entry.sec_referrer_policy
+                        ? t('settings.domainHeaderStateOn')
+                        : t('settings.domainHeaderStateOff')}
+                    />
+                    <CoverageChip
+                      on={entry.sec_frame_options}
+                      label={t('settings.domainHeaderFrame')}
+                      stateLabel={entry.sec_frame_options
+                        ? t('settings.domainHeaderStateOn')
+                        : t('settings.domainHeaderStateOff')}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-text-tertiary mt-2">
+              {t('settings.domainHstsCacheHint')}
+            </p>
+            <div className="mt-3 flex items-center justify-between gap-3 bg-bg-secondary border border-border rounded-[var(--radius-md)] px-4 py-3">
+              <div className="min-w-0">
+                <div className="text-[12px] font-medium">
+                  {t('settings.domainOrphanSummary', { count: hostnameOverview.orphan_count })}
+                </div>
+                <div className="text-[11px] text-text-tertiary mt-0.5">
+                  {t('settings.domainCleanupDesc')}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                className="shrink-0 whitespace-nowrap"
+                disabled={hostnameOverview.orphan_count === 0 || cleanupBusy}
+                onClick={() => setShowOrphanCleanup(true)}
+              >
+                {t('settings.domainCleanup')}
+              </Button>
+            </div>
+          </>
+        )}
+        {hostnameOverviewError && hostnameOverview !== null && (
+          <p className="text-[11px] text-error mt-2">{t('settings.domainSettingsError')}</p>
+        )}
       </section>
 
       {/* Theme */}
@@ -525,8 +713,48 @@ export function SettingsPage() {
         })}
         danger
       />
+      <ConfirmDialog
+        open={showOrphanCleanup}
+        onClose={() => setShowOrphanCleanup(false)}
+        onConfirm={handleCleanupOrphans}
+        title={t('settings.domainCleanupTitle')}
+        message={t('settings.domainCleanupConfirm', {
+          count: hostnameOverview?.orphan_count ?? 0,
+        })}
+        detail={
+          (hostnameOverview?.orphan_hsts_count ?? 0) > 0
+            ? t('settings.domainCleanupHstsWarning', {
+                count: hostnameOverview?.orphan_hsts_count ?? 0,
+              })
+            : undefined
+        }
+        confirmText={t('settings.domainCleanup')}
+        danger
+      />
       </div>
       </div>
     </>
+  );
+}
+
+function CoverageChip({
+  label,
+  on,
+  stateLabel,
+}: {
+  label: string;
+  on: boolean;
+  stateLabel?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px]',
+        on ? 'bg-success-bg text-success' : 'bg-bg-hover text-text-tertiary',
+      )}
+    >
+      <span>{label}</span>
+      {stateLabel && <span className="font-medium">{stateLabel}</span>}
+    </span>
   );
 }

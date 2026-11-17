@@ -1,5 +1,6 @@
 pub mod conflict;
 pub mod error_pages;
+pub mod hostname_settings;
 pub mod hsts;
 pub mod http_config;
 pub mod main_config;

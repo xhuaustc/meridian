@@ -21,6 +21,7 @@ import type {
   ForceHttpsCheck,
   HostnameHstsCheck,
   HostnameHstsSettings,
+  HostnameSettingsOverview,
   RequestParamCatalog,
   RequestParamKey,
   ProxyMetrics,
@@ -98,6 +99,17 @@ export const setHostnameHsts = (
 
 /** Hostnames whose HSTS switch is on, for the rule list's certificate warning. */
 export const listHstsHostnames = () => invoke<string[]>('list_hsts_hostnames');
+
+/**
+ * Every stored hostname setting with its rule references. The backend counts
+ * the rules, so the page never derives "orphan" from a second copy of them.
+ */
+export const listHostnameSettings = () =>
+  invoke<HostnameSettingsOverview>('list_hostname_settings');
+
+/** Delete hostname settings rows no rule references; regenerates the configs. */
+export const cleanupOrphanHostnameSettings = () =>
+  invoke<number>('cleanup_orphan_hostname_settings');
 
 /** The request-parameter defaults an inheriting rule shows, plus the presets. */
 export const getRequestParamDefaults = () =>

@@ -16,6 +16,7 @@
 | 2026-04-04 | ProxyForm: field error highlighting on save, default ports (HTTP→80, HTTPS→443) | UX improvement |
 | 2026-04-04 | Remove duplicate "Add Proxy" sidebar entry (keep dashboard button only) | UX cleanup |
 | 2026-04-05 | SettingsPage: add "Performance" section with worker processes setting | Performance tuning |
+| 2026-11-17 | SettingsPage: add "Domain Settings" section listing stored hostnames, coverage, HSTS-off escape hatch and guarded orphan cleanup | Ticket #25 |
 
 ## Feature Description
 
@@ -140,6 +141,13 @@ Note: "Add Proxy" entry removed from sidebar (only accessible via dashboard butt
 - Per-rule JSON logs: filters by parsing `"time"` field in each JSON line
 - Global logs: truncates entire file if modification time exceeds cutoff
 
+**Domain Settings (域名设置):**
+- Second section on the page. Lists every stored `hostname_settings` row (not rule-derived hostnames), fetched via `list_hostname_settings`; the backend reports `rule_count` and `is_orphan`.
+- Each row shows HSTS (on/off, `max-age`, `includeSubDomains`) and the three default security headers; rows no rule references carry an "孤儿/Orphan" badge and "已无任何规则引用此域名".
+- Every HSTS-on row offers "关闭 HSTS/Turn off HSTS", the only way to undo a switch whose last TLS rule was deleted or changed to non-TLS (the rule form no longer reaches it).
+- Cleanup button opens a confirm dialog naming the orphan count; if any orphan has HSTS on, the dialog adds a warning that browser-cached HSTS is **not** cleared. Only unreferenced rows are deleted, then configs regenerate through the usual apply path.
+- Empty state: a sentence, rendered even when there are zero rules and zero settings.
+
 **导入导出：**
 - 导出按钮 → 调用 Tauri save dialog → `export_config` 命令 → 保存 JSON
 - 导入按钮 → 调用 Tauri open dialog → 读取文件 → `import_config` 命令 → 确认对话框（覆盖提示）
@@ -230,6 +238,9 @@ See `spec_monitoring.md` for full spec. UI summary:
 | TP-031 | Normal | ProxyForm → select HTTPS type | Listen port defaults to 443 | |
 | TP-032 | Normal | Custom Select component → click to open | Dropdown appears with options, ChevronDown rotates | |
 | TP-033 | Normal | Custom Select → click outside | Dropdown closes | |
+| TP-034 | Normal | Settings → Domain Settings with a referenced and an orphan row | Rule count on the referenced row; orphan badge and description on the orphan | |
+| TP-035 | Normal | Settings → cleanup with an HSTS-on orphan | Confirm names the count and warns the browser HSTS cache is not cleared; after confirming only the orphan disappears | |
+| TP-036 | Boundary | Settings → Domain Settings on an empty database | Empty-state sentence, no blank panel and no error | Zero rules and zero settings |
 | TP-008 | Normal | Read access log (500 lines) | Log entries displayed in terminal style | |
 | TP-009 | Normal | Auto-refresh → new request comes in | New line appended, auto-scroll if near bottom | |
 | TP-010 | Normal | Export config → Import on fresh install | All rules, certs (metadata), access lists restored | |
@@ -257,6 +268,7 @@ See `spec_monitoring.md` for full spec. UI summary:
 | Custom Select | `src/components/ui/Select.tsx` | `Select` | Custom dropdown, same API as native |
 | LogsPage enhancements | `src/pages/LogsPage.tsx` | `LogsPage` | Auto-refresh, smart scroll, rule filter |
 | Settings log retention | `src/pages/SettingsPage.tsx` | `SettingsPage` | log_retention_days number input |
+| Settings domain list + cleanup | `src/pages/SettingsPage.tsx` | `SettingsPage`, `CoverageChip` | `list_hostname_settings`, `cleanup_orphan_hostname_settings`; per-row HSTS off |
 | Log retention cleanup | `src-tauri/src/commands/logs.rs` | `cleanup_old_logs()` | Called on app startup |
 | ProxyForm validation | `src/components/proxy/ProxyForm.tsx` | `ProxyForm` | Field error highlighting + default ports |
 | Sidebar navigation | `src/components/layout/Sidebar.tsx` | `Sidebar` | Monitor entry added, Add Proxy removed |

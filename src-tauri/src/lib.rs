@@ -539,6 +539,8 @@ pub fn run() {
             commands::proxy::get_hostname_hsts,
             commands::proxy::set_hostname_hsts,
             commands::proxy::list_hsts_hostnames,
+            commands::proxy::list_hostname_settings,
+            commands::proxy::cleanup_orphan_hostname_settings,
             commands::proxy::get_request_param_defaults,
             commands::proxy::set_request_param_default,
             // Certificate commands
