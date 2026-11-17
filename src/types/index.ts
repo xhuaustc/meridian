@@ -5,6 +5,40 @@ export type AccessPolicy = 'allow' | 'deny';
 
 export type UpstreamScheme = 'http' | 'https';
 
+/** The six request parameters. Names are the nginx directives they produce. */
+export type RequestParamKey =
+  | 'client_max_body_size'
+  | 'client_body_timeout'
+  | 'proxy_connect_timeout'
+  | 'proxy_read_timeout'
+  | 'proxy_send_timeout'
+  | 'proxy_buffering';
+
+/** Which unit rules the custom input follows. */
+export type RequestParamKind = 'size' | 'duration' | 'toggle';
+
+export type RequestParamValues = Record<RequestParamKey, string>;
+
+export interface RequestParamInfo {
+  directive: RequestParamKey;
+  kind: RequestParamKind;
+  /** `proxy_buffering` only takes on/off, so it offers no "unlimited" state. */
+  supports_unlimited: boolean;
+}
+
+export interface RequestParamPreset {
+  id: string;
+  values: RequestParamValues;
+}
+
+export interface RequestParamCatalog {
+  /** The global value an inheriting row shows. */
+  defaults: RequestParamValues;
+  /** The six rows, in display order. */
+  params: RequestParamInfo[];
+  presets: RequestParamPreset[];
+}
+
 export interface ProxyRule {
   id: string;
   name: string;
@@ -26,6 +60,13 @@ export interface ProxyRule {
   force_https: boolean;
   custom_headers: string | null;
   upstream_targets: string | null;
+  /** `null` inherits the global default; `0` means unlimited where nginx accepts it. */
+  client_max_body_size: string | null;
+  client_body_timeout: string | null;
+  proxy_connect_timeout: string | null;
+  proxy_read_timeout: string | null;
+  proxy_send_timeout: string | null;
+  proxy_buffering: string | null;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -64,6 +105,12 @@ export interface CreateProxyRule {
   force_https?: boolean;
   custom_headers?: string | null;
   upstream_targets?: string | null;
+  client_max_body_size?: string | null;
+  client_body_timeout?: string | null;
+  proxy_connect_timeout?: string | null;
+  proxy_read_timeout?: string | null;
+  proxy_send_timeout?: string | null;
+  proxy_buffering?: string | null;
   sort_order?: number;
 }
 
@@ -86,6 +133,12 @@ export interface UpdateProxyRule {
   force_https?: boolean;
   custom_headers?: string | null;
   upstream_targets?: string | null;
+  client_max_body_size?: string | null;
+  client_body_timeout?: string | null;
+  proxy_connect_timeout?: string | null;
+  proxy_read_timeout?: string | null;
+  proxy_send_timeout?: string | null;
+  proxy_buffering?: string | null;
   sort_order?: number;
 }
 

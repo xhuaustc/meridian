@@ -56,6 +56,7 @@ fn write_config(path: &Path, content: &str) -> Result<(), AppError> {
 use tracing::{info, warn};
 
 use crate::error::AppError;
+use crate::request_params::{self, RequestDefaults};
 use crate::store::models::{AccessList, AccessRule, Certificate, PortConflict, ProxyRule};
 use crate::store::{access_repo, cert_repo, proxy_repo, settings_repo};
 
@@ -64,6 +65,8 @@ pub struct ConfigData {
     pub certs: Vec<Certificate>,
     pub access_lists: Vec<(AccessList, Vec<AccessRule>)>,
     pub worker_processes: String,
+    /// Global request-parameter defaults every rule inherits from.
+    pub request_defaults: RequestDefaults,
 }
 
 #[derive(Serialize)]
@@ -144,6 +147,7 @@ pub fn preview_db_state(
             &data.certs,
             &data.access_lists,
             &data.worker_processes,
+            &data.request_defaults,
             crate::nginx_manager::capabilities(),
         )?;
         let staged_files = generated_files(&staged)?;
@@ -212,11 +216,13 @@ pub fn load_config_data(db: &rusqlite::Connection) -> Result<ConfigData, AppErro
     }
     let worker_processes =
         settings_repo::get(db, "worker_processes")?.unwrap_or_else(|| "2".to_string());
+    let request_defaults = request_params::load_defaults(db)?;
     Ok(ConfigData {
         rules,
         certs,
         access_lists,
         worker_processes,
+        request_defaults,
     })
 }
 
@@ -231,18 +237,21 @@ pub fn apply_db_state(
         &data.certs,
         &data.access_lists,
         &data.worker_processes,
+        &data.request_defaults,
         crate::nginx_manager::capabilities(),
     )
 }
 
 /// Generate all configs with explicit settings.
 /// `worker_processes`: "auto" or a numeric string (default "2").
+/// `request_defaults`: the global values rules inherit their request parameters from.
 pub fn generate_all_configs_with_settings(
     data_dir: &Path,
     rules: &[ProxyRule],
     certs: &[Certificate],
     access_lists: &[(AccessList, Vec<AccessRule>)],
     worker_processes: &str,
+    request_defaults: &RequestDefaults,
     capabilities: crate::nginx_manager::Capabilities,
 ) -> Result<Vec<PortConflict>, AppError> {
     let nginx_dir = data_dir.join("nginx");
@@ -317,8 +326,13 @@ pub fn generate_all_configs_with_settings(
 
     // Generate HTTP config files
     for ((port, domain), group_rules) in &http_groups {
-        let mut config =
-            http_config::generate_server_block(group_rules, certs, access_lists, data_dir);
+        let mut config = http_config::generate_server_block(
+            group_rules,
+            certs,
+            access_lists,
+            data_dir,
+            request_defaults,
+        );
         if redirect_owner.get(domain.as_str()) == Some(port) {
             config.push('\n');
             config.push_str(&http_config::generate_https_redirect_block(domain));
@@ -461,6 +475,7 @@ pub fn apply_and_reload(
     certs: &[Certificate],
     access_lists: &[(AccessList, Vec<AccessRule>)],
     worker_processes: &str,
+    request_defaults: &RequestDefaults,
     capabilities: crate::nginx_manager::Capabilities,
 ) -> Result<Vec<PortConflict>, AppError> {
     // Step 1: backup existing configs
@@ -473,6 +488,7 @@ pub fn apply_and_reload(
         certs,
         access_lists,
         worker_processes,
+        request_defaults,
         capabilities,
     ) {
         Ok(c) => c,
@@ -604,6 +620,7 @@ mod preview_tests {
             force_https: false,
             custom_headers: None,
             upstream_targets: None,
+            request: Default::default(),
             sort_order: 0,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
@@ -634,6 +651,7 @@ mod preview_tests {
             certs,
             &[],
             "1",
+            &RequestDefaults::builtin(),
             crate::nginx_manager::Capabilities::default(),
         )
         .unwrap()
@@ -898,5 +916,37 @@ mod sidecar_tests {
             count_directive_in_blocks(&stream_config, "server", "proxy_pass"),
             1
         );
+    }
+
+    /// A rule that overrides every request parameter must still produce config
+    /// the shipped nginx accepts, not just config our own string checks like.
+    #[test]
+    fn custom_request_parameters_are_accepted_by_the_sidecar() {
+        let Some(()) = SidecarHarness::with_configs(|harness| {
+            let mut rule = test_support::http_rule("rule-http-000000000002", "app.local");
+            rule.request.client_max_body_size = Some("2g".to_string());
+            rule.request.client_body_timeout = Some("300s".to_string());
+            rule.request.proxy_connect_timeout = Some("10s".to_string());
+            rule.request.proxy_read_timeout = Some("3600s".to_string());
+            rule.request.proxy_send_timeout = Some("3600s".to_string());
+            rule.request.proxy_buffering = Some("off".to_string());
+
+            harness.generate_all(&[rule], &[], &[], "1", harness.capabilities());
+
+            let config = harness.read("conf.d/18080_app_local.conf");
+            assert_eq!(
+                count_directive_in_blocks(&config, "location /", "client_max_body_size"),
+                1,
+                "the overridden body limit must reach the location nginx reads"
+            );
+            assert!(config.contains("        client_max_body_size 2g;"));
+            assert!(config.contains("        client_body_timeout 300s;"));
+            assert!(config.contains("        proxy_connect_timeout 10s;"));
+            assert!(config.contains("        proxy_read_timeout 3600s;"));
+            assert!(config.contains("        proxy_send_timeout 3600s;"));
+            assert!(config.contains("        proxy_buffering off;"));
+        }) else {
+            return;
+        };
     }
 }

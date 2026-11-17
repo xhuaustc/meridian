@@ -203,4 +203,13 @@ mod tests {
         let config = generate_main_config(&data_dir, "2", Capabilities::default());
         assert!(config.contains("\"server_protocol\":\"$server_protocol\""));
     }
+
+    /// Every location spells out its effective body limit, but the `http` block
+    /// keeps this fallback for anything the generator does not own.
+    #[test]
+    fn test_main_config_keeps_the_body_limit_fallback() {
+        let data_dir = PathBuf::from("/tmp/test");
+        let config = generate_main_config(&data_dir, "2", Capabilities::default());
+        assert!(config.contains("client_max_body_size 100m;"));
+    }
 }

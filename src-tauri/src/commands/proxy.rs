@@ -4,6 +4,7 @@ use tauri::State;
 
 use crate::config_engine;
 use crate::error::AppError;
+use crate::request_params;
 use crate::store::models::{CreateProxyRule, ProxyRule, UpdateProxyRule};
 use crate::store::proxy_repo;
 use crate::validators;
@@ -79,6 +80,17 @@ pub async fn check_force_https(
         listen_port,
         exclude_id.as_deref(),
     ))
+}
+
+/// The request-parameter defaults every rule inherits, plus the presets the form
+/// can apply in one click. One call, so the form hardcodes neither the global
+/// values nor the preset values.
+#[tauri::command]
+pub fn get_request_param_defaults(
+    state: State<'_, AppState>,
+) -> Result<request_params::RequestParamCatalog, AppError> {
+    let db = state.get_conn()?;
+    request_params::catalog(&db)
 }
 
 #[tauri::command]

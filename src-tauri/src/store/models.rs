@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::request_params::RequestParams;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProxyRule {
     pub id: String,
@@ -27,6 +29,10 @@ pub struct ProxyRule {
     /// JSON array of {host, port, weight} for load balancing.
     /// When set, overrides upstream_host/upstream_port.
     pub upstream_targets: Option<String>,
+    /// Per-rule request parameters. Every `None` inherits the global default;
+    /// serialised flat, so frontend rules keep one flat object per parameter.
+    #[serde(default, flatten)]
+    pub request: RequestParams,
     pub sort_order: i32,
     pub created_at: String,
     pub updated_at: String,
@@ -51,6 +57,13 @@ pub struct CreateProxyRule {
     pub force_https: Option<bool>,
     pub custom_headers: Option<String>,
     pub upstream_targets: Option<String>,
+    /// Request parameters; `None` inherits the global default, `0` is unlimited.
+    pub client_max_body_size: Option<String>,
+    pub client_body_timeout: Option<String>,
+    pub proxy_connect_timeout: Option<String>,
+    pub proxy_read_timeout: Option<String>,
+    pub proxy_send_timeout: Option<String>,
+    pub proxy_buffering: Option<String>,
     pub sort_order: Option<i32>,
 }
 
@@ -74,6 +87,14 @@ pub struct UpdateProxyRule {
     pub force_https: Option<bool>,
     pub custom_headers: Option<String>,
     pub upstream_targets: Option<String>,
+    /// Request parameters. `None` clears the override back to inherited; the
+    /// form always sends all six, so "absent" never means "keep the old value".
+    pub client_max_body_size: Option<String>,
+    pub client_body_timeout: Option<String>,
+    pub proxy_connect_timeout: Option<String>,
+    pub proxy_read_timeout: Option<String>,
+    pub proxy_send_timeout: Option<String>,
+    pub proxy_buffering: Option<String>,
     pub sort_order: Option<i32>,
 }
 

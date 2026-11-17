@@ -11,10 +11,10 @@ import { useCertStore } from '../../stores/cert-store';
 import { useAccessStore } from '../../stores/access-store';
 import { useToastStore } from '../../stores/toast-store';
 import { useApiError } from '../../hooks/useApiError';
-import { checkPortConflict, checkForceHttps, checkHostnameExists, createHost, previewCreateProxy, previewUpdateProxy } from '../../lib/api';
+import { checkPortConflict, checkForceHttps, checkHostnameExists, createHost, previewCreateProxy, previewUpdateProxy, getRequestParamDefaults } from '../../lib/api';
 import { Dialog } from '../ui/Dialog';
 import { cn } from '../../lib/utils';
-import type { ProxyRule, ProxyType, TlsMode, CreateProxyRule, UpdateProxyRule, UpstreamTarget, UpstreamScheme, ConfigPreview, ForceHttpsCheck } from '../../types';
+import type { ProxyRule, ProxyType, TlsMode, CreateProxyRule, UpdateProxyRule, UpstreamTarget, UpstreamScheme, ConfigPreview, ForceHttpsCheck, RequestParamCatalog, RequestParamInfo, RequestParamKey } from '../../types';
 
 type FormProxyType = 'http' | 'https' | 'tcp' | 'udp';
 
@@ -36,6 +36,90 @@ function fromFormType(ft: FormProxyType): { proxy_type: ProxyType; defaultTls: T
     case 'udp':
       return { proxy_type: 'stream_udp', defaultTls: 'none' };
   }
+}
+
+/** The six request parameters, in the order the backend lists them. */
+const REQUEST_PARAM_KEYS: RequestParamKey[] = [
+  'client_max_body_size',
+  'client_body_timeout',
+  'proxy_connect_timeout',
+  'proxy_read_timeout',
+  'proxy_send_timeout',
+  'proxy_buffering',
+];
+
+type RequestParamMode = 'inherit' | 'custom' | 'unlimited';
+
+const REQUEST_PARAM_MODES: { value: RequestParamMode; labelKey: string }[] = [
+  { value: 'inherit', labelKey: 'proxyForm.requestParamInherit' },
+  { value: 'custom', labelKey: 'proxyForm.requestParamCustom' },
+  { value: 'unlimited', labelKey: 'proxyForm.requestParamUnlimited' },
+];
+
+const REQUEST_PARAM_LABEL_KEYS: Record<RequestParamKey, string> = {
+  client_max_body_size: 'proxyForm.paramBodySize',
+  client_body_timeout: 'proxyForm.paramBodyReadTimeout',
+  proxy_connect_timeout: 'proxyForm.paramConnectTimeout',
+  proxy_read_timeout: 'proxyForm.paramReadTimeout',
+  proxy_send_timeout: 'proxyForm.paramSendTimeout',
+  proxy_buffering: 'proxyForm.paramBuffering',
+};
+
+const REQUEST_PARAM_PLACEHOLDER_KEYS: Record<RequestParamKey, string> = {
+  client_max_body_size: 'proxyForm.requestParamUnitSize',
+  client_body_timeout: 'proxyForm.requestParamUnitTime',
+  proxy_connect_timeout: 'proxyForm.requestParamUnitTime',
+  proxy_read_timeout: 'proxyForm.requestParamUnitTime',
+  proxy_send_timeout: 'proxyForm.requestParamUnitTime',
+  proxy_buffering: 'proxyForm.requestParamUnitToggle',
+};
+
+const PRESET_LABEL_KEYS: Record<string, string> = {
+  large_upload: 'proxyForm.presetLargeUpload',
+  ai_streaming: 'proxyForm.presetAiStreaming',
+  long_tasks: 'proxyForm.presetLongTasks',
+};
+
+/**
+ * Row metadata used until `get_request_param_defaults` answers (and when it
+ * cannot). The backend catalogue is the source of truth once loaded.
+ */
+const FALLBACK_REQUEST_PARAMS: RequestParamInfo[] = REQUEST_PARAM_KEYS.map((directive) => ({
+  directive,
+  kind: directive === 'client_max_body_size' ? 'size' : directive === 'proxy_buffering' ? 'toggle' : 'duration',
+  supports_unlimited: directive !== 'proxy_buffering',
+}));
+
+/**
+ * Mirrors the Rust unit rules so a bad value is caught before saving. The
+ * backend validates every value again; this is only the fast path.
+ */
+function isValidRequestParamValue(directive: RequestParamKey, value: string): boolean {
+  if (!value) return false;
+  if (directive === 'proxy_buffering') return value === 'on' || value === 'off';
+  if (directive === 'client_max_body_size') return /^\d+[kmg]$/i.test(value);
+  return /^\d+(ms|s|m|h)$/.test(value);
+}
+
+/** `null` (or a lost field) inherits; `0` is unlimited where nginx accepts it. */
+function toRequestParamMode(directive: RequestParamKey, stored: string | null | undefined): RequestParamMode {
+  if (stored == null || stored === '') return 'inherit';
+  if (stored === '0' && directive !== 'proxy_buffering') return 'unlimited';
+  return 'custom';
+}
+
+interface RequestParamRow {
+  mode: RequestParamMode;
+  value: string;
+}
+
+function initialRequestParamRows(rule?: ProxyRule): Record<RequestParamKey, RequestParamRow> {
+  const rows = {} as Record<RequestParamKey, RequestParamRow>;
+  for (const directive of REQUEST_PARAM_KEYS) {
+    const stored = rule?.[directive] ?? null;
+    rows[directive] = { mode: toRequestParamMode(directive, stored), value: stored ?? '' };
+  }
+  return rows;
 }
 
 interface ProxyFormProps {
@@ -77,6 +161,10 @@ export function ProxyForm({ rule }: ProxyFormProps) {
   const [customHeaders, setCustomHeaders] = useState<Array<{key: string, value: string}>>([]);
   const [upstreamTargets, setUpstreamTargets] = useState<UpstreamTarget[]>([]);
   const [multiUpstream, setMultiUpstream] = useState(false);
+  const [requestParams, setRequestParams] = useState<Record<RequestParamKey, RequestParamRow>>(
+    () => initialRequestParamRows(rule),
+  );
+  const [requestParamCatalog, setRequestParamCatalog] = useState<RequestParamCatalog | null>(null);
   const [showHostsPrompt, setShowHostsPrompt] = useState(false);
   const [hostsPromptDomain, setHostsPromptDomain] = useState('');
   const [hostsPromptIp, setHostsPromptIp] = useState('127.0.0.1');
@@ -85,6 +173,22 @@ export function ProxyForm({ rule }: ProxyFormProps) {
     fetchCertificates();
     fetchLists();
   }, [fetchCertificates, fetchLists]);
+
+  // The global defaults and the presets live in the backend (one source of
+  // truth for #24); the form never hardcodes either.
+  useEffect(() => {
+    let cancelled = false;
+    getRequestParamDefaults()
+      .then((catalog) => {
+        if (!cancelled) setRequestParamCatalog(catalog);
+      })
+      .catch(() => {
+        // Rows still work from the fallback metadata; inherit hints show "—".
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (rule?.custom_headers) {
@@ -179,6 +283,71 @@ export function ProxyForm({ rule }: ProxyFormProps) {
     });
   };
 
+  const setRequestParamMode = (directive: RequestParamKey, mode: RequestParamMode) => {
+    setRequestParams((current) => {
+      const row = current[directive];
+      // Entering "custom" from another state starts from the inherited value,
+      // so the user edits a real value instead of a blank field.
+      const value =
+        mode === 'custom' && !row.value
+          ? requestParamCatalog?.defaults[directive] ?? ''
+          : row.value;
+      return { ...current, [directive]: { mode, value } };
+    });
+    clearError(`param_${directive}`);
+  };
+
+  const setRequestParamValue = (directive: RequestParamKey, value: string) => {
+    setRequestParams((current) => ({
+      ...current,
+      [directive]: { ...current[directive], value },
+    }));
+    clearError(`param_${directive}`);
+  };
+
+  // Applying a preset writes six explicit values; every row stays editable.
+  const applyRequestPreset = (presetId: string) => {
+    const preset = requestParamCatalog?.presets.find((candidate) => candidate.id === presetId);
+    if (!preset) return;
+    const next = {} as Record<RequestParamKey, RequestParamRow>;
+    for (const directive of REQUEST_PARAM_KEYS) {
+      next[directive] = { mode: 'custom', value: preset.values[directive] };
+    }
+    setRequestParams(next);
+    setErrors((current) => {
+      const cleared = { ...current };
+      for (const directive of REQUEST_PARAM_KEYS) delete cleared[`param_${directive}`];
+      return cleared;
+    });
+  };
+
+  const requestParamInfo = requestParamCatalog?.params ?? FALLBACK_REQUEST_PARAMS;
+
+  const requestParamErrorMessage = (directive: RequestParamKey) => {
+    const field = t(REQUEST_PARAM_LABEL_KEYS[directive]);
+    return directive === 'proxy_buffering'
+      ? t('proxyForm.requestParamInvalidToggle', { field })
+      : t('proxyForm.requestParamInvalidUnit', {
+          field,
+          example: t(REQUEST_PARAM_PLACEHOLDER_KEYS[directive]),
+        });
+  };
+
+  // Custom values are checked before save/preview; the backend checks again.
+  const collectInvalidRequestParams = (errs: Record<string, boolean>): RequestParamKey[] => {
+    const invalid: RequestParamKey[] = [];
+    if (isStream) return invalid;
+    for (const directive of REQUEST_PARAM_KEYS) {
+      const row = requestParams[directive];
+      if (row.mode !== 'custom') continue;
+      if (!isValidRequestParamValue(directive, row.value.trim())) {
+        errs[`param_${directive}`] = true;
+        invalid.push(directive);
+      }
+    }
+    return invalid;
+  };
+
   const buildInput = (): CreateProxyRule => {
     const { proxy_type } = fromFormType(formType);
     const headersObj: Record<string, string> = {};
@@ -188,6 +357,12 @@ export function ProxyForm({ rule }: ProxyFormProps) {
     const validTargets = multiUpstream
       ? upstreamTargets.filter((target) => target.host.trim() && target.port > 0)
       : [];
+    const requestParamValues: Partial<Record<RequestParamKey, string | null>> = {};
+    for (const directive of REQUEST_PARAM_KEYS) {
+      const row = requestParams[directive];
+      requestParamValues[directive] =
+        row.mode === 'inherit' ? null : row.mode === 'unlimited' ? '0' : row.value.trim();
+    }
     return {
       name,
       proxy_type,
@@ -206,10 +381,18 @@ export function ProxyForm({ rule }: ProxyFormProps) {
       force_https: tlsMode === 'terminate' ? forceHttps : false,
       custom_headers: Object.keys(headersObj).length > 0 ? JSON.stringify(headersObj) : null,
       upstream_targets: validTargets.length > 0 ? JSON.stringify(validTargets) : null,
+      ...requestParamValues,
     };
   };
 
   const handlePreview = async () => {
+    const paramErrors: Record<string, boolean> = {};
+    const invalidParams = collectInvalidRequestParams(paramErrors);
+    if (invalidParams.length > 0) {
+      setErrors((current) => ({ ...current, ...paramErrors }));
+      addToast('error', requestParamErrorMessage(invalidParams[0]));
+      return;
+    }
     setSaving(true);
     try {
       const input = buildInput();
@@ -233,6 +416,10 @@ export function ProxyForm({ rule }: ProxyFormProps) {
       if (!upstreamPort) errs.upstreamPort = true;
     }
     if (!isStream && !domain.trim()) errs.domain = true;
+
+    // A custom request parameter must carry a unit; a bare number is a mistake,
+    // not "0 = unlimited" (that state has its own button).
+    const invalidParams = collectInvalidRequestParams(errs);
 
     // Port conflict check
     if (listenPort) {
@@ -261,6 +448,9 @@ export function ProxyForm({ rule }: ProxyFormProps) {
       else if (errs.listenPort && !portWarning) addToast('error', t('proxyForm.portRequired'));
       else if (errs.listenPort && portWarning) addToast('error', t('proxyForm.portConflictWarning', { message: portWarning }));
       else if (errs.domain) addToast('error', t('proxyForm.domainHint'));
+      else if (invalidParams.length > 0) {
+        addToast('error', requestParamErrorMessage(invalidParams[0]));
+      }
       else if (errs.upstreamHost || errs.upstreamPort) addToast('error', t('proxyForm.upstreamRequired'));
       return;
     }
@@ -701,54 +891,158 @@ export function ProxyForm({ rule }: ProxyFormProps) {
         </div>
       </section>
 
-      {/* Custom Headers */}
+      {/* Request Parameters */}
+      {!isStream && (
+        <section className="mt-6">
+          <div className="flex items-center justify-between gap-3 mb-3 pb-2 border-b border-border">
+            <h2 className="text-[13px] font-semibold">{t('proxyForm.requestParams')}</h2>
+            <Select
+              value=""
+              onChange={(e) => applyRequestPreset(e.target.value)}
+              className="w-[200px]"
+              disabled={!requestParamCatalog}
+            >
+              <option value="">{t('proxyForm.applyPreset')}</option>
+              {requestParamCatalog?.presets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {t(PRESET_LABEL_KEYS[preset.id] ?? preset.id)}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <p className="text-[11px] text-text-tertiary mb-3">
+            {t('proxyForm.requestParamsDesc')}
+          </p>
+          <div className="border border-border rounded-[var(--radius-sm)] divide-y divide-border">
+            {requestParamInfo.map((info) => {
+              const row = requestParams[info.directive];
+              const isInvalid = !!errors[`param_${info.directive}`];
+              const fieldLabel = t(REQUEST_PARAM_LABEL_KEYS[info.directive]);
+              return (
+                <div key={info.directive} className="px-3 py-2">
+                  <div className="flex items-center gap-3">
+                    <span className="flex-1 text-[12px] text-text-secondary">{fieldLabel}</span>
+                    <div className="flex border border-border rounded-[var(--radius-sm)] overflow-hidden shrink-0">
+                      {REQUEST_PARAM_MODES.map((mode) => {
+                        const unavailable = mode.value === 'unlimited' && !info.supports_unlimited;
+                        return (
+                          <button
+                            key={mode.value}
+                            type="button"
+                            disabled={unavailable}
+                            title={unavailable ? t('proxyForm.requestParamNoUnlimited') : undefined}
+                            onClick={() => setRequestParamMode(info.directive, mode.value)}
+                            className={cn(
+                              'py-[3px] px-2 text-[11px] border-r border-border last:border-r-0',
+                              row.mode === mode.value
+                                ? 'bg-accent-light text-accent font-medium'
+                                : unavailable
+                                  ? 'bg-bg-secondary text-text-tertiary/40 cursor-not-allowed'
+                                  : 'bg-bg-secondary text-text-secondary hover:bg-bg-hover cursor-pointer',
+                            )}
+                          >
+                            {t(mode.labelKey)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="w-[132px] shrink-0 text-right">
+                      {row.mode === 'custom' ? (
+                        <Input
+                          value={row.value}
+                          onChange={(e) => setRequestParamValue(info.directive, e.target.value)}
+                          placeholder={t(REQUEST_PARAM_PLACEHOLDER_KEYS[info.directive])}
+                          className={cn('text-right', isInvalid && 'border-error')}
+                        />
+                      ) : (
+                        <span className="text-[12px] text-text-tertiary">
+                          {row.mode === 'inherit'
+                            ? t('proxyForm.requestParamInheriting', {
+                                value: requestParamCatalog?.defaults[info.directive] ?? '—',
+                              })
+                            : t('proxyForm.requestParamUnlimitedValue')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {isInvalid && (
+                    <p className="text-[11px] text-error mt-1 text-right">
+                      {requestParamErrorMessage(info.directive)}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Headers: request headers are rule-level; response headers are not yet. */}
       {!isStream && (
         <section className="mt-6">
           <h2 className="text-[13px] font-semibold mb-3 pb-2 border-b border-border">
-            {t('proxyForm.customHeaders')}
+            {t('proxyForm.headersSection')}
           </h2>
-          <p className="text-[11px] text-text-tertiary mb-3">
-            {t('proxyForm.customHeadersDesc')}
-          </p>
-          {customHeaders.map((header, idx) => (
-            <div key={idx} className="flex gap-2 mb-2 items-center">
-              <Input
-                value={header.key}
-                onChange={(e) => {
-                  const next = [...customHeaders];
-                  next[idx] = { ...next[idx], key: e.target.value };
-                  setCustomHeaders(next);
-                }}
-                placeholder="Header-Name"
-                className="flex-1"
-              />
-              <Input
-                value={header.value}
-                onChange={(e) => {
-                  const next = [...customHeaders];
-                  next[idx] = { ...next[idx], value: e.target.value };
-                  setCustomHeaders(next);
-                }}
-                placeholder="Value"
-                className="flex-1"
-              />
-              <button
-                type="button"
-                onClick={() => setCustomHeaders(customHeaders.filter((_, i) => i !== idx))}
-                className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-sidebar hover:text-error shrink-0"
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <h3 className="text-[12px] font-medium text-text-secondary mb-1">
+                {t('proxyForm.requestHeaders')}
+              </h3>
+              <p className="text-[11px] text-text-tertiary mb-3">
+                {t('proxyForm.requestHeadersDesc')}
+              </p>
+              {customHeaders.map((header, idx) => (
+                <div key={idx} className="flex gap-2 mb-2 items-center">
+                  <Input
+                    value={header.key}
+                    onChange={(e) => {
+                      const next = [...customHeaders];
+                      next[idx] = { ...next[idx], key: e.target.value };
+                      setCustomHeaders(next);
+                    }}
+                    placeholder="Header-Name"
+                    className="flex-1"
+                  />
+                  <Input
+                    value={header.value}
+                    onChange={(e) => {
+                      const next = [...customHeaders];
+                      next[idx] = { ...next[idx], value: e.target.value };
+                      setCustomHeaders(next);
+                    }}
+                    placeholder="Value"
+                    className="flex-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCustomHeaders(customHeaders.filter((_, i) => i !== idx))}
+                    className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-sidebar hover:text-error shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setCustomHeaders([...customHeaders, { key: '', value: '' }])}
               >
-                <X className="w-3.5 h-3.5" />
-              </button>
+                <Plus className="w-3.5 h-3.5" />
+                {t('proxyForm.addRequestHeader')}
+              </Button>
             </div>
-          ))}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setCustomHeaders([...customHeaders, { key: '', value: '' }])}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            {t('proxyForm.addHeader')}
-          </Button>
+            <div>
+              <h3 className="text-[12px] font-medium text-text-secondary mb-1">
+                {t('proxyForm.responseHeaders')}
+              </h3>
+              <p className="text-[11px] text-text-tertiary mb-3">
+                {t('proxyForm.responseHeadersDesc')}
+              </p>
+              <div className="border border-dashed border-border rounded-[var(--radius-sm)] px-3 py-6 text-center text-[11px] text-text-tertiary">
+                {t('proxyForm.responseHeadersPlaceholder')}
+              </div>
+            </div>
+          </div>
         </section>
       )}
 
