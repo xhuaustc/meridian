@@ -18,6 +18,7 @@ import type {
   LogChunk,
   RecoveryPreview,
   ConfigPreview,
+  ForceHttpsCheck,
   ProxyMetrics,
   HostEntry,
   HostsSyncStatus,
@@ -60,6 +61,18 @@ export const batchToggleProxies = (ids: string[], enabled: boolean) =>
 
 export const batchDeleteProxies = (ids: string[]) =>
   invoke<number>('batch_delete_proxies', { ids });
+
+/** Whether saving this rule would emit the synthesised port-80 redirect block. */
+export const checkForceHttps = (
+  domain: string,
+  listenPort: number,
+  excludeId?: string,
+) =>
+  invoke<ForceHttpsCheck>('check_force_https', {
+    domain,
+    listenPort,
+    excludeId: excludeId ?? undefined,
+  });
 
 // --- Certificates ---
 export const listCertificates = () => invoke<Certificate[]>('list_certificates');

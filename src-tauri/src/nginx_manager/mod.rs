@@ -29,6 +29,25 @@ fn nginx_command(nginx_path: &Path) -> Command {
 
 static WAS_RUNNING: AtomicBool = AtomicBool::new(false);
 
+/// Locate the nginx sidecar built into this repository, which is the binary the
+/// generated configs must satisfy. Falling back to PATH would validate against
+/// whatever nginx happens to be installed, which is a different module set.
+///
+/// Test-only: the app itself resolves the sidecar through Tauri's resource API.
+#[cfg(test)]
+pub(crate) fn repo_sidecar() -> Option<PathBuf> {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries");
+    fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("nginx-"))
+        })
+}
+
 /// What the nginx build we ship can actually do.
 ///
 /// The generator reads this instead of assuming a module set: the Unix sidecar is

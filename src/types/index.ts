@@ -22,11 +22,22 @@ export interface ProxyRule {
   access_list_id: string | null;
   websocket: boolean;
   keep_alive: boolean;
+  /** Emit a synthesised port-80 308 redirect for this hostname (http + TLS terminate only). */
+  force_https: boolean;
   custom_headers: string | null;
   upstream_targets: string | null;
   sort_order: number;
   created_at: string;
   updated_at: string;
+}
+
+/** Why the synthesised HTTP -> HTTPS redirect block will not be generated. */
+export type ForceHttpsSkip = 'existing_port_80_rule' | 'own_port_80';
+
+export interface ForceHttpsCheck {
+  synthesized: boolean;
+  skipped: ForceHttpsSkip | null;
+  blocking_rule_name: string | null;
 }
 
 export interface UpstreamTarget {
@@ -50,6 +61,7 @@ export interface CreateProxyRule {
   access_list_id?: string | null;
   websocket?: boolean;
   keep_alive?: boolean;
+  force_https?: boolean;
   custom_headers?: string | null;
   upstream_targets?: string | null;
   sort_order?: number;
@@ -71,6 +83,7 @@ export interface UpdateProxyRule {
   access_list_id?: string | null;
   websocket?: boolean;
   keep_alive?: boolean;
+  force_https?: boolean;
   custom_headers?: string | null;
   upstream_targets?: string | null;
   sort_order?: number;

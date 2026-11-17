@@ -333,6 +333,7 @@ pub fn http_rule(id: &str, domain: &str) -> ProxyRule {
         access_list_id: None,
         websocket: false,
         keep_alive: false,
+        force_https: false,
         custom_headers: None,
         upstream_targets: None,
         sort_order: 0,

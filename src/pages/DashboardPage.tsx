@@ -189,6 +189,7 @@ export function DashboardPage() {
         access_list_id: rule.access_list_id,
         websocket: rule.websocket,
         keep_alive: rule.keep_alive,
+        force_https: rule.force_https,
         custom_headers: rule.custom_headers,
         upstream_targets: rule.upstream_targets,
       });

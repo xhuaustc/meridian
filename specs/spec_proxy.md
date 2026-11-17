@@ -6,6 +6,7 @@
 | 2026-04-04 | Initial spec | Phase 2d |
 | 2026-04-04 | Add frontend form validation with field error highlighting | UX improvement |
 | 2026-04-04 | Add default listen port on proxy type selection (HTTP→80, HTTPS→443) | UX improvement |
+| 2026-11-17 | Add `force_https` flag: port-80 308 redirect is synthesised at generation time, never stored as a rule | Ticket #22 |
 
 ## Feature Description
 
@@ -21,6 +22,7 @@
 - UC-006: 删除规则
 - UC-007: 搜索和筛选规则列表
 - UC-008: 在 Dashboard 查看统计概览
+- UC-009: 勾选「强制 HTTPS」后，由生成器自动补一个 80 端口跳转块，无需另建 80 规则
 
 ## Interface Definition
 
@@ -104,6 +106,7 @@
 9. **Custom headers 仅对 HTTP/HTTPS 类型有效**
 10. **前端表单验证**：保存前检查所有必填字段（name, listen_port, upstream_host, upstream_port, domain for HTTP/HTTPS），不合格字段添加红色边框高亮，第一个错误以 toast 提示。同时执行异步端口冲突检查。
 11. **默认监听端口**：创建新规则时（非编辑），选择 HTTP 类型自动填入 80，选择 HTTPS 自动填入 443，TCP/UDP 留空
+12. **强制 HTTPS（`force_https`）**：只对「`proxy_type=http` + `tls_mode=terminate`」的规则生效，表单也只在这个组合下显示开关。打开后生成器为该域名合成 80 端口 `return 308` 跳转块（见 spec_config_engine.md），跳转块不落库、不出现在规则列表、不影响规则计数与冲突检测。若该域名已有真实 80 端口规则（或本规则自身监听 80），跳过合成，表单给黄色提示说明原因（不阻塞保存）
 
 ## Test Points
 
@@ -129,6 +132,9 @@
 | TP-018 | Boundary | Create rule with port 65535 | Rule created successfully | |
 | TP-019 | Normal | check_port_conflict while editing rule (exclude_id=self) | No conflict with itself | |
 | TP-020 | Combination | Create HTTPS terminate + access list + WebSocket + custom headers | All features active simultaneously | |
+| TP-021 | Normal | `force_https` on an https rule, no 80 rule for the domain | Generated 443 file also holds the synthesised 80 redirect block | See spec_config_engine.md TP-026 |
+| TP-022 | Normal | `force_https` on, domain already has an enabled 80 rule | No redirect block; form shows a yellow "skipped" hint | Non-blocking |
+| TP-023 | Normal | `force_https` flag is only offered for http + TLS terminate | Toggle hidden for stream/passthrough/none; value forced to false when saved | |
 
 ## Implementation Map
 
@@ -136,6 +142,7 @@
 |-----------|-------------|-----------------|-------|
 | Proxy CRUD commands | `src-tauri/src/commands/proxy.rs` | `create_proxy`, `update_proxy`, `delete_proxy`, `toggle_proxy`, `list_proxies` | |
 | Port conflict check | `src-tauri/src/commands/engine.rs` | `check_port_conflict` | |
+| Force-HTTPS availability check | `src-tauri/src/commands/proxy.rs` | `check_force_https` | Backs the form's yellow "skipped" hint |
 | Input validation | `src-tauri/src/validators.rs` | `validate_create_proxy`, `validate_update_proxy` | |
 | Frontend proxy form | `src/components/proxy/ProxyForm.tsx` | `ProxyForm` | Field validation + default ports |
 | Frontend proxy store | `src/stores/proxy-store.ts` | `useProxyStore` | Zustand store |

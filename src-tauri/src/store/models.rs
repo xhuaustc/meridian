@@ -19,6 +19,10 @@ pub struct ProxyRule {
     pub websocket: bool,
     #[serde(default)]
     pub keep_alive: bool,
+    /// Emit a synthesised port-80 308 redirect for this rule's hostname.
+    /// Only consulted for `proxy_type == "http"` with `tls_mode == "terminate"`.
+    #[serde(default)]
+    pub force_https: bool,
     pub custom_headers: Option<String>,
     /// JSON array of {host, port, weight} for load balancing.
     /// When set, overrides upstream_host/upstream_port.
@@ -44,6 +48,7 @@ pub struct CreateProxyRule {
     pub access_list_id: Option<String>,
     pub websocket: Option<bool>,
     pub keep_alive: Option<bool>,
+    pub force_https: Option<bool>,
     pub custom_headers: Option<String>,
     pub upstream_targets: Option<String>,
     pub sort_order: Option<i32>,
@@ -66,6 +71,7 @@ pub struct UpdateProxyRule {
     pub access_list_id: Option<String>,
     pub websocket: Option<bool>,
     pub keep_alive: Option<bool>,
+    pub force_https: Option<bool>,
     pub custom_headers: Option<String>,
     pub upstream_targets: Option<String>,
     pub sort_order: Option<i32>,
