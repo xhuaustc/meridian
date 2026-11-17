@@ -18,6 +18,17 @@ use crate::error::AppError;
 pub type DbPool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
 pub type PooledConn = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
+/// Nullable request-parameter columns on `proxy_rules`, named after the nginx
+/// directives they produce. A `NULL` column means "inherit the global default".
+pub const REQUEST_PARAM_COLUMNS: [&str; 6] = [
+    "client_max_body_size",
+    "client_body_timeout",
+    "proxy_connect_timeout",
+    "proxy_read_timeout",
+    "proxy_send_timeout",
+    "proxy_buffering",
+];
+
 /// Initialize database pool at the given path, run migrations, and return a connection pool.
 pub fn init_pool(db_path: &Path) -> Result<DbPool, AppError> {
     if let Some(parent) = db_path.parent() {
@@ -88,6 +99,13 @@ fn run_migrations(conn: &Connection) -> Result<(), AppError> {
             keep_alive INTEGER NOT NULL DEFAULT 0,
             force_https INTEGER NOT NULL DEFAULT 0,
             custom_headers TEXT,
+            -- Request parameters; NULL means the global default (inherit).
+            client_max_body_size TEXT,
+            client_body_timeout TEXT,
+            proxy_connect_timeout TEXT,
+            proxy_read_timeout TEXT,
+            proxy_send_timeout TEXT,
+            proxy_buffering TEXT,
             sort_order INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -228,6 +246,26 @@ fn run_migrations(conn: &Connection) -> Result<(), AppError> {
             "ALTER TABLE proxy_rules ADD COLUMN force_https INTEGER NOT NULL DEFAULT 0;",
         )?;
         info!("Migrated proxy_rules table with force_https column");
+    }
+
+    // Request parameters are nullable on purpose: a NULL column means the rule
+    // inherits the global default, so upgrading an existing database leaves
+    // every old rule in the inherited state without a data rewrite.
+    let mut added_request_params = Vec::new();
+    for column in REQUEST_PARAM_COLUMNS {
+        if !proxy_cols.iter().any(|existing| existing == column) {
+            conn.execute_batch(&format!(
+                "ALTER TABLE proxy_rules ADD COLUMN {} TEXT;",
+                column
+            ))?;
+            added_request_params.push(column);
+        }
+    }
+    if !added_request_params.is_empty() {
+        info!(
+            "Migrated proxy_rules table with request parameter columns: {:?}",
+            added_request_params
+        );
     }
 
     info!("Database migrations complete");
@@ -372,6 +410,70 @@ mod tests {
             !row.hsts_include_subdomains,
             "includeSubdomains defaults off"
         );
+    }
+
+    #[test]
+    fn migration_adds_nullable_request_parameters_without_rewriting_existing_rows() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        // proxy_rules as it shipped before request parameters existed.
+        conn.execute_batch(
+            "CREATE TABLE proxy_rules (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                proxy_type TEXT NOT NULL CHECK(proxy_type IN ('http','stream_tcp','stream_udp')),
+                enabled INTEGER NOT NULL DEFAULT 1,
+                listen_port INTEGER NOT NULL,
+                listen_host TEXT DEFAULT '0.0.0.0',
+                domain TEXT,
+                path_prefix TEXT,
+                upstream_host TEXT NOT NULL,
+                upstream_port INTEGER NOT NULL,
+                upstream_scheme TEXT NOT NULL DEFAULT 'http',
+                tls_mode TEXT DEFAULT 'none' CHECK(tls_mode IN ('none','terminate','passthrough')),
+                certificate_id TEXT,
+                access_list_id TEXT,
+                websocket INTEGER DEFAULT 0,
+                keep_alive INTEGER NOT NULL DEFAULT 0,
+                custom_headers TEXT,
+                upstream_targets TEXT,
+                sort_order INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO proxy_rules (id, name, proxy_type, listen_port, domain, upstream_host, upstream_port, created_at, updated_at)
+            VALUES ('legacy', 'legacy rule', 'http', 80, 'legacy.local', '127.0.0.1', 3000, '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z');",
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+        // A second run must be a no-op rather than a duplicate-column error.
+        run_migrations(&conn).unwrap();
+
+        let mut stmt = conn.prepare("PRAGMA table_info(proxy_rules)").unwrap();
+        let columns: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(|result| result.ok())
+            .collect();
+        drop(stmt);
+        for column in REQUEST_PARAM_COLUMNS {
+            assert!(
+                columns.iter().any(|existing| existing == column),
+                "migration did not add `{column}`"
+            );
+        }
+
+        let rule = crate::store::proxy_repo::get_by_id(&conn, "legacy").unwrap();
+        assert_eq!(rule.name, "legacy rule", "existing data must survive");
+        for param in crate::request_params::RequestParam::ALL {
+            assert_eq!(
+                rule.request.get(param),
+                None,
+                "an upgraded rule must inherit `{}`",
+                param.directive()
+            );
+        }
     }
 
     #[test]

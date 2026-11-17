@@ -19,6 +19,7 @@ import type {
   RecoveryPreview,
   ConfigPreview,
   ForceHttpsCheck,
+  RequestParamCatalog,
   ProxyMetrics,
   HostEntry,
   HostsSyncStatus,
@@ -73,6 +74,10 @@ export const checkForceHttps = (
     listenPort,
     excludeId: excludeId ?? undefined,
   });
+
+/** The request-parameter defaults an inheriting rule shows, plus the presets. */
+export const getRequestParamDefaults = () =>
+  invoke<RequestParamCatalog>('get_request_param_defaults');
 
 // --- Certificates ---
 export const listCertificates = () => invoke<Certificate[]>('list_certificates');

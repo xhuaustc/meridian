@@ -8,6 +8,7 @@ mod hosts_manager;
 mod metrics;
 mod nginx_manager;
 mod recovery;
+mod request_params;
 mod store;
 mod validators;
 
@@ -414,6 +415,8 @@ pub fn run() {
                         .ok()
                         .flatten()
                         .unwrap_or_else(|| "2".to_string());
+                    let request_defaults = request_params::load_defaults(&db)
+                        .unwrap_or_else(|_| request_params::RequestDefaults::builtin());
                     let mut access_lists = Vec::new();
                     for al in &access_lists_raw {
                         if let Ok(rules) = store::access_repo::list_rules_by_list(&db, &al.id) {
@@ -430,6 +433,7 @@ pub fn run() {
                         &access_lists,
                         &hostname_settings,
                         &worker_processes,
+                        &request_defaults,
                         nginx_manager::capabilities(),
                     );
                 }
@@ -532,6 +536,7 @@ pub fn run() {
             commands::proxy::batch_toggle_proxies,
             commands::proxy::batch_delete_proxies,
             commands::proxy::check_force_https,
+            commands::proxy::get_request_param_defaults,
             // Certificate commands
             commands::cert::list_certificates,
             commands::cert::get_certificate,

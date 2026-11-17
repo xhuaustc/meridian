@@ -20,6 +20,7 @@ use std::process::{Command, Output};
 
 use super::main_config;
 use crate::nginx_manager::{parse_capabilities, Capabilities};
+use crate::request_params::RequestDefaults;
 use crate::store::models::{
     AccessList, AccessRule, Certificate, HostnameSettings, PortConflict, ProxyRule,
 };
@@ -238,6 +239,7 @@ impl SidecarHarness {
             access_lists,
             hostname_settings,
             worker_processes,
+            &RequestDefaults::builtin(),
             capabilities,
         )
         .expect("config generation failed")
@@ -341,6 +343,7 @@ pub fn http_rule(id: &str, domain: &str) -> ProxyRule {
         force_https: false,
         custom_headers: None,
         upstream_targets: None,
+        request: Default::default(),
         sort_order: 0,
         created_at: "2024-01-01T00:00:00Z".to_string(),
         updated_at: "2024-01-01T00:00:00Z".to_string(),

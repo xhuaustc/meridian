@@ -78,6 +78,8 @@ impl AppError {
                     "VALIDATION_IP".to_string()
                 } else if msg.contains("Hostname") || msg.contains("hostname") {
                     "VALIDATION_HOSTNAME".to_string()
+                } else if msg.starts_with("Request parameter ") {
+                    "VALIDATION_REQUEST_PARAM".to_string()
                 } else {
                     "VALIDATION_ERROR".to_string()
                 }
@@ -98,5 +100,20 @@ impl From<AppError> for tauri::ipc::InvokeError {
         let json = serde_json::to_string(&response)
             .unwrap_or_else(|_| format!(r#"{{"code":"UNKNOWN","message":"{}"}}"#, err));
         tauri::ipc::InvokeError::from(json)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_parameter_validation_has_its_own_error_code() {
+        let error = AppError::Validation(
+            "Request parameter 'proxy_read_timeout' must be a duration with one of the units \
+             ms, s, m or h (for example 60s); got '30'"
+                .to_string(),
+        );
+        assert_eq!(error.error_code(), "VALIDATION_REQUEST_PARAM");
     }
 }

@@ -1,4 +1,5 @@
 use crate::error::AppError;
+use crate::request_params::{self, RequestParam};
 use crate::store::models::{CreateProxyRule, ProxyRule, UpdateProxyRule};
 
 const VALID_PROXY_TYPES: &[&str] = &["http", "stream_tcp", "stream_udp"];
@@ -92,7 +93,37 @@ pub fn validate_create_proxy(input: &CreateProxyRule) -> Result<(), AppError> {
         ));
     }
 
+    validate_request_params(
+        input.client_max_body_size.as_deref(),
+        input.client_body_timeout.as_deref(),
+        input.proxy_connect_timeout.as_deref(),
+        input.proxy_read_timeout.as_deref(),
+        input.proxy_send_timeout.as_deref(),
+        input.proxy_buffering.as_deref(),
+    )?;
+
     Ok(())
+}
+
+/// Request-parameter values a payload would store. `None` means "inherit",
+/// which needs no checking; every explicit value is re-checked here even though
+/// the form checks it first, because the form is not a trust boundary.
+fn validate_request_params(
+    client_max_body_size: Option<&str>,
+    client_body_timeout: Option<&str>,
+    proxy_connect_timeout: Option<&str>,
+    proxy_read_timeout: Option<&str>,
+    proxy_send_timeout: Option<&str>,
+    proxy_buffering: Option<&str>,
+) -> Result<(), AppError> {
+    request_params::validate_all([
+        (RequestParam::ClientMaxBodySize, client_max_body_size),
+        (RequestParam::ClientBodyTimeout, client_body_timeout),
+        (RequestParam::ProxyConnectTimeout, proxy_connect_timeout),
+        (RequestParam::ProxyReadTimeout, proxy_read_timeout),
+        (RequestParam::ProxySendTimeout, proxy_send_timeout),
+        (RequestParam::ProxyBuffering, proxy_buffering),
+    ])
 }
 
 #[allow(dead_code)]
@@ -176,6 +207,15 @@ pub fn validate_update_proxy(input: &UpdateProxyRule) -> Result<(), AppError> {
             ));
         }
     }
+
+    validate_request_params(
+        input.client_max_body_size.as_deref(),
+        input.client_body_timeout.as_deref(),
+        input.proxy_connect_timeout.as_deref(),
+        input.proxy_read_timeout.as_deref(),
+        input.proxy_send_timeout.as_deref(),
+        input.proxy_buffering.as_deref(),
+    )?;
 
     Ok(())
 }
@@ -401,6 +441,15 @@ pub fn validate_update_proxy_merged(
         ));
     }
 
+    validate_request_params(
+        input.client_max_body_size.as_deref(),
+        input.client_body_timeout.as_deref(),
+        input.proxy_connect_timeout.as_deref(),
+        input.proxy_read_timeout.as_deref(),
+        input.proxy_send_timeout.as_deref(),
+        input.proxy_buffering.as_deref(),
+    )?;
+
     Ok(())
 }
 
@@ -443,6 +492,42 @@ mod tests {
             force_https: None,
             custom_headers: None,
             upstream_targets: None,
+            client_max_body_size: None,
+            client_body_timeout: None,
+            proxy_connect_timeout: None,
+            proxy_read_timeout: None,
+            proxy_send_timeout: None,
+            proxy_buffering: None,
+            sort_order: None,
+        }
+    }
+
+    fn make_update_input() -> UpdateProxyRule {
+        UpdateProxyRule {
+            name: None,
+            proxy_type: None,
+            enabled: None,
+            listen_port: None,
+            listen_host: None,
+            domain: None,
+            path_prefix: None,
+            upstream_host: None,
+            upstream_port: None,
+            upstream_scheme: None,
+            tls_mode: None,
+            certificate_id: None,
+            access_list_id: None,
+            websocket: None,
+            keep_alive: None,
+            force_https: None,
+            custom_headers: None,
+            upstream_targets: None,
+            client_max_body_size: None,
+            client_body_timeout: None,
+            proxy_connect_timeout: None,
+            proxy_read_timeout: None,
+            proxy_send_timeout: None,
+            proxy_buffering: None,
             sort_order: None,
         }
     }
@@ -605,5 +690,48 @@ mod tests {
     #[test]
     fn test_invalid_host_ip() {
         assert!(validate_host_entry("not-ip", "localhost").is_err());
+    }
+
+    // Request parameter validation
+    #[test]
+    fn test_request_parameters_accept_values_with_units() {
+        let mut input = make_create_input();
+        input.client_max_body_size = Some("2g".to_string());
+        input.client_body_timeout = Some("300s".to_string());
+        input.proxy_connect_timeout = Some("10s".to_string());
+        input.proxy_read_timeout = Some("3600s".to_string());
+        input.proxy_send_timeout = Some("500ms".to_string());
+        input.proxy_buffering = Some("off".to_string());
+        assert!(validate_create_proxy(&input).is_ok());
+    }
+
+    #[test]
+    fn test_request_parameters_reject_a_bare_number_and_name_the_field() {
+        let mut input = make_create_input();
+        input.client_max_body_size = Some("2".to_string());
+        let message = validate_create_proxy(&input).unwrap_err().to_string();
+        assert!(message.contains("client_max_body_size"), "{message}");
+        assert!(message.contains("k, m or g"), "{message}");
+        assert!(message.contains("'2'"), "{message}");
+    }
+
+    #[test]
+    fn test_request_parameters_reject_a_non_toggle_buffering_value() {
+        let mut input = make_create_input();
+        input.proxy_buffering = Some("0".to_string());
+        let message = validate_create_proxy(&input).unwrap_err().to_string();
+        assert!(message.contains("proxy_buffering"), "{message}");
+        assert!(message.contains("on or off"), "{message}");
+    }
+
+    #[test]
+    fn test_update_validation_checks_request_parameters_too() {
+        let existing = crate::config_engine::test_support::http_rule("rule-1", "app.local");
+        let mut input = make_update_input();
+        input.proxy_read_timeout = Some("30".to_string());
+        let message = validate_update_proxy_merged(&input, &existing)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("proxy_read_timeout"), "{message}");
     }
 }

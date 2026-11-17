@@ -214,6 +214,7 @@ pub fn preview_bundle(path: &Path, passphrase: &str) -> Result<RecoveryPreview, 
 /// Tables a restore deliberately does not copy yet, each waiting on its own
 /// ticket. They stay listed so the gap is visible: an unlisted, unrestored table
 /// means a restored bundle silently mixes with leftover local rows.
+#[cfg_attr(not(test), allow(dead_code))]
 const RESTORE_DEFERRED_TABLES: [&str; 1] = ["hostname_settings"];
 
 const RESTORE_TABLES: [&str; 8] = [

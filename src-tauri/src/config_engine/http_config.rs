@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use super::{nginx_path, nginx_path_str, security_headers};
+use crate::request_params::{self, RequestDefaults, RequestParam};
 use crate::store::models::{AccessList, AccessRule, Certificate, HostnameSettings, ProxyRule};
 
 #[derive(serde::Deserialize)]
@@ -59,6 +60,7 @@ pub fn generate_server_block(
     access_lists: &[(AccessList, Vec<AccessRule>)],
     data_dir: &Path,
     hostname_settings: &HashMap<String, HostnameSettings>,
+    request_defaults: &RequestDefaults,
 ) -> String {
     if rules.is_empty() {
         return String::new();
@@ -217,6 +219,17 @@ pub fn generate_server_block(
                     out.push_str(&format!("        proxy_set_header {} {};\n", key, value));
                 }
             }
+        }
+
+        // Request parameters: every location spells out the effective value, so
+        // inheriting from the global defaults is still visible in the file that
+        // nginx actually reads.
+        for param in RequestParam::ALL {
+            out.push_str(&format!(
+                "        {} {};\n",
+                param.directive(),
+                request_params::effective(&rule.request, request_defaults, param)
+            ));
         }
 
         // Keep access rules local to this location so unrelated paths do not inherit them.
@@ -387,6 +400,7 @@ mod tests {
             force_https: false,
             custom_headers: None,
             upstream_targets: None,
+            request: Default::default(),
             sort_order: 0,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
@@ -396,7 +410,14 @@ mod tests {
     #[test]
     fn keep_alive_single_target_uses_upstream_block() {
         let rule = make_http_rule(true);
-        let config = generate_server_block(&[&rule], &[], &[], Path::new("/tmp"), &HashMap::new());
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &HashMap::new(),
+            &RequestDefaults::builtin(),
+        );
 
         assert!(config.contains("upstream upstream_123456789abc {"));
         assert!(config.contains("    server 127.0.0.1:3000;"));
@@ -404,6 +425,150 @@ mod tests {
         assert!(config.contains("        proxy_pass http://upstream_123456789abc;"));
         assert!(config.contains("        proxy_http_version 1.1;"));
         assert!(config.contains("        proxy_set_header Connection \"\";"));
+    }
+
+    /// The request-parameter directives written in the `location /` block, in
+    /// the order config generation lists them.
+    fn request_param_lines(config: &str) -> Vec<String> {
+        let location = config
+            .split("location / {")
+            .nth(1)
+            .expect("the generated config must contain `location /`");
+        location
+            .lines()
+            .map(str::trim)
+            .filter(|line| {
+                RequestParam::ALL
+                    .iter()
+                    .any(|param| line.starts_with(param.directive()))
+            })
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn an_inheriting_rule_writes_the_global_defaults_explicitly() {
+        let rule = make_http_rule(false);
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &HashMap::new(),
+            &RequestDefaults::builtin(),
+        );
+
+        assert_eq!(
+            request_param_lines(&config),
+            [
+                "client_max_body_size 100m;",
+                "client_body_timeout 60s;",
+                "proxy_connect_timeout 60s;",
+                "proxy_read_timeout 60s;",
+                "proxy_send_timeout 60s;",
+                "proxy_buffering on;",
+            ],
+            "inheriting must still spell out what nginx will run"
+        );
+        assert_eq!(
+            config.matches("client_max_body_size").count(),
+            1,
+            "the parameter belongs to the location, not the server block"
+        );
+    }
+
+    #[test]
+    fn a_custom_rule_writes_its_own_values_instead_of_the_defaults() {
+        let mut rule = make_http_rule(false);
+        rule.request.client_max_body_size = Some("2g".to_string());
+        rule.request.client_body_timeout = Some("300s".to_string());
+        rule.request.proxy_connect_timeout = Some("10s".to_string());
+        rule.request.proxy_read_timeout = Some("3600s".to_string());
+        rule.request.proxy_send_timeout = Some("3600s".to_string());
+        rule.request.proxy_buffering = Some("off".to_string());
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &HashMap::new(),
+            &RequestDefaults::builtin(),
+        );
+
+        assert_eq!(
+            request_param_lines(&config),
+            [
+                "client_max_body_size 2g;",
+                "client_body_timeout 300s;",
+                "proxy_connect_timeout 10s;",
+                "proxy_read_timeout 3600s;",
+                "proxy_send_timeout 3600s;",
+                "proxy_buffering off;",
+            ]
+        );
+    }
+
+    #[test]
+    fn unlimited_writes_zero_for_the_five_parameters_where_nginx_accepts_it() {
+        let mut rule = make_http_rule(false);
+        rule.request.client_max_body_size = Some("0".to_string());
+        rule.request.client_body_timeout = Some("0".to_string());
+        rule.request.proxy_connect_timeout = Some("0".to_string());
+        rule.request.proxy_read_timeout = Some("0".to_string());
+        rule.request.proxy_send_timeout = Some("0".to_string());
+        rule.request.proxy_buffering = Some("off".to_string());
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &HashMap::new(),
+            &RequestDefaults::builtin(),
+        );
+
+        assert_eq!(
+            request_param_lines(&config),
+            [
+                "client_max_body_size 0;",
+                "client_body_timeout 0;",
+                "proxy_connect_timeout 0;",
+                "proxy_read_timeout 0;",
+                "proxy_send_timeout 0;",
+                "proxy_buffering off;",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_preset_filled_rule_writes_the_preset_values() {
+        use crate::request_params::RequestParams;
+
+        let preset = request_params::presets()
+            .into_iter()
+            .find(|preset| preset.id == "ai_streaming")
+            .expect("AI streaming preset");
+        let mut rule = make_http_rule(false);
+        rule.request = RequestParams::from_defaults(&preset.values);
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &HashMap::new(),
+            &RequestDefaults::builtin(),
+        );
+
+        assert_eq!(
+            request_param_lines(&config),
+            [
+                "client_max_body_size 100m;",
+                "client_body_timeout 60s;",
+                "proxy_connect_timeout 10s;",
+                "proxy_read_timeout 3600s;",
+                "proxy_send_timeout 3600s;",
+                "proxy_buffering off;",
+            ]
+        );
     }
 
     #[test]
@@ -426,6 +591,7 @@ mod tests {
             &[(acl, Vec::new())],
             Path::new("/tmp"),
             &HashMap::new(),
+            &RequestDefaults::builtin(),
         );
         let public_location = config.split("location /public {").nth(1).unwrap();
         assert!(config.contains("location /private {"));
@@ -441,8 +607,14 @@ mod tests {
         web.id = "rule-web".to_string();
         web.path_prefix = Some("/web".to_string());
 
-        let config =
-            generate_server_block(&[&api, &web], &[], &[], Path::new("/tmp"), &HashMap::new());
+        let config = generate_server_block(
+            &[&api, &web],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &HashMap::new(),
+            &RequestDefaults::builtin(),
+        );
 
         assert_eq!(
             count_directive_in_blocks(&config, "server", "add_header"),
@@ -464,7 +636,14 @@ mod tests {
     #[test]
     fn security_headers_sit_between_the_server_name_and_the_error_page_directives() {
         let rule = make_http_rule(false);
-        let config = generate_server_block(&[&rule], &[], &[], Path::new("/tmp"), &HashMap::new());
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &HashMap::new(),
+            &RequestDefaults::builtin(),
+        );
 
         let server_name = config.find("server_name app.local;").unwrap();
         let first_header = config.find("add_header X-Content-Type-Options").unwrap();
@@ -485,7 +664,14 @@ mod tests {
             },
         )]);
 
-        let config = generate_server_block(&[&rule], &[], &[], Path::new("/tmp"), &settings);
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &settings,
+            &RequestDefaults::builtin(),
+        );
 
         assert_eq!(
             count_directive_in_blocks(&config, "server", "add_header"),
@@ -506,7 +692,14 @@ mod tests {
             },
         )]);
 
-        let config = generate_server_block(&[&rule], &[], &[], Path::new("/tmp"), &settings);
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &settings,
+            &RequestDefaults::builtin(),
+        );
 
         assert_eq!(
             count_directive_in_blocks(&config, "server", "add_header"),
@@ -531,7 +724,14 @@ mod tests {
             },
         )]);
 
-        let config = generate_server_block(&[&rule], &[], &[], Path::new("/tmp"), &settings);
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &settings,
+            &RequestDefaults::builtin(),
+        );
 
         assert_eq!(
             count_directive_in_blocks(&config, "server", "add_header"),
@@ -554,7 +754,14 @@ mod tests {
             },
         )]);
 
-        let config = generate_server_block(&[&rule], &[], &[], Path::new("/tmp"), &settings);
+        let config = generate_server_block(
+            &[&rule],
+            &[],
+            &[],
+            Path::new("/tmp"),
+            &settings,
+            &RequestDefaults::builtin(),
+        );
 
         assert!(!config.contains("Strict-Transport-Security"));
         assert_eq!(

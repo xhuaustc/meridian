@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use rusqlite::{params, Connection};
 
 use crate::error::AppError;
+use crate::request_params::RequestParams;
 use crate::store::models::{CreateProxyRule, ProxyRule, UpdateProxyRule};
 
 fn row_to_proxy(row: &rusqlite::Row) -> rusqlite::Result<ProxyRule> {
@@ -26,6 +27,14 @@ fn row_to_proxy(row: &rusqlite::Row) -> rusqlite::Result<ProxyRule> {
         force_https: row.get::<_, i32>("force_https")? != 0,
         custom_headers: row.get("custom_headers")?,
         upstream_targets: row.get("upstream_targets")?,
+        request: RequestParams {
+            client_max_body_size: row.get("client_max_body_size")?,
+            client_body_timeout: row.get("client_body_timeout")?,
+            proxy_connect_timeout: row.get("proxy_connect_timeout")?,
+            proxy_read_timeout: row.get("proxy_read_timeout")?,
+            proxy_send_timeout: row.get("proxy_send_timeout")?,
+            proxy_buffering: row.get("proxy_buffering")?,
+        },
         sort_order: row.get("sort_order")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
@@ -70,8 +79,8 @@ pub fn create(conn: &Connection, input: &CreateProxyRule) -> Result<ProxyRule, A
     let sort_order = input.sort_order.unwrap_or(0);
 
     conn.execute(
-        "INSERT INTO proxy_rules (id, name, proxy_type, enabled, listen_port, listen_host, domain, path_prefix, upstream_host, upstream_port, upstream_scheme, tls_mode, certificate_id, access_list_id, websocket, keep_alive, force_https, custom_headers, upstream_targets, sort_order, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+        "INSERT INTO proxy_rules (id, name, proxy_type, enabled, listen_port, listen_host, domain, path_prefix, upstream_host, upstream_port, upstream_scheme, tls_mode, certificate_id, access_list_id, websocket, keep_alive, force_https, custom_headers, upstream_targets, client_max_body_size, client_body_timeout, proxy_connect_timeout, proxy_read_timeout, proxy_send_timeout, proxy_buffering, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
         params![
             id,
             input.name,
@@ -91,6 +100,12 @@ pub fn create(conn: &Connection, input: &CreateProxyRule) -> Result<ProxyRule, A
             force_https,
             input.custom_headers,
             input.upstream_targets,
+            input.client_max_body_size,
+            input.client_body_timeout,
+            input.proxy_connect_timeout,
+            input.proxy_read_timeout,
+            input.proxy_send_timeout,
+            input.proxy_buffering,
             sort_order,
             now,
             now,
@@ -107,8 +122,9 @@ pub fn update(conn: &Connection, id: &str, input: &UpdateProxyRule) -> Result<Pr
 
     // For non-optional fields, fall back to existing value if not provided.
     // For optional fields (domain, path_prefix, certificate_id, access_list_id,
-    // custom_headers), use the input value directly so the frontend can explicitly
-    // clear them by sending None.
+    // custom_headers, request parameters), use the input value directly so the
+    // frontend can explicitly clear them by sending None. For a request
+    // parameter, None means "inherit the global default".
     let name = input.name.as_deref().unwrap_or(&existing.name);
     let proxy_type = input.proxy_type.as_deref().unwrap_or(&existing.proxy_type);
     let enabled = input.enabled.unwrap_or(existing.enabled);
@@ -141,7 +157,7 @@ pub fn update(conn: &Connection, id: &str, input: &UpdateProxyRule) -> Result<Pr
     let upstream_targets: &Option<String> = &input.upstream_targets;
 
     conn.execute(
-        "UPDATE proxy_rules SET name=?1, proxy_type=?2, enabled=?3, listen_port=?4, listen_host=?5, domain=?6, path_prefix=?7, upstream_host=?8, upstream_port=?9, upstream_scheme=?10, tls_mode=?11, certificate_id=?12, access_list_id=?13, websocket=?14, keep_alive=?15, force_https=?16, custom_headers=?17, upstream_targets=?18, sort_order=?19, updated_at=?20 WHERE id=?21",
+        "UPDATE proxy_rules SET name=?1, proxy_type=?2, enabled=?3, listen_port=?4, listen_host=?5, domain=?6, path_prefix=?7, upstream_host=?8, upstream_port=?9, upstream_scheme=?10, tls_mode=?11, certificate_id=?12, access_list_id=?13, websocket=?14, keep_alive=?15, force_https=?16, custom_headers=?17, upstream_targets=?18, client_max_body_size=?19, client_body_timeout=?20, proxy_connect_timeout=?21, proxy_read_timeout=?22, proxy_send_timeout=?23, proxy_buffering=?24, sort_order=?25, updated_at=?26 WHERE id=?27",
         params![
             name,
             proxy_type,
@@ -161,6 +177,12 @@ pub fn update(conn: &Connection, id: &str, input: &UpdateProxyRule) -> Result<Pr
             if force_https { 1 } else { 0 },
             custom_headers,
             upstream_targets,
+            input.client_max_body_size,
+            input.client_body_timeout,
+            input.proxy_connect_timeout,
+            input.proxy_read_timeout,
+            input.proxy_send_timeout,
+            input.proxy_buffering,
             sort_order,
             now,
             id,
@@ -344,6 +366,12 @@ mod tests {
             force_https: None,
             custom_headers: None,
             upstream_targets: None,
+            client_max_body_size: None,
+            client_body_timeout: None,
+            proxy_connect_timeout: None,
+            proxy_read_timeout: None,
+            proxy_send_timeout: None,
+            proxy_buffering: None,
             sort_order: None,
         }
     }
@@ -368,6 +396,12 @@ mod tests {
             force_https: Some(force_https),
             custom_headers: None,
             upstream_targets: None,
+            client_max_body_size: None,
+            client_body_timeout: None,
+            proxy_connect_timeout: None,
+            proxy_read_timeout: None,
+            proxy_send_timeout: None,
+            proxy_buffering: None,
             sort_order: None,
         }
     }
@@ -394,6 +428,121 @@ mod tests {
             !get_by_id(&db, &rule.id).unwrap().force_https,
             "turning the flag off must be persisted"
         );
+
+        drop(db);
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// The rule form reads one flat object per rule, so the request parameters
+    /// must serialise next to the other rule fields, never as a nested bag.
+    #[test]
+    fn the_serialised_rule_carries_request_parameters_flat_for_the_form() {
+        let path = std::env::temp_dir().join(format!(
+            "meridian-proxy-request-json-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let db = crate::store::init_database(&path).unwrap();
+
+        let mut input = create_input();
+        input.client_max_body_size = Some("2g".to_string());
+        let rule = create(&db, &input).unwrap();
+
+        let json = serde_json::to_value(&rule).unwrap();
+        assert_eq!(json["client_max_body_size"], "2g");
+        assert!(json["proxy_read_timeout"].is_null());
+        assert!(json.get("request").is_none(), "parameters must not nest");
+
+        let parsed: ProxyRule = serde_json::from_value(json).unwrap();
+        assert_eq!(parsed.request.client_max_body_size.as_deref(), Some("2g"));
+        assert_eq!(parsed.request.proxy_read_timeout, None);
+
+        drop(db);
+        let _ = std::fs::remove_file(path);
+    }
+
+    fn update_request_params(values: [Option<&str>; 6]) -> UpdateProxyRule {
+        let values = values.map(|value| value.map(str::to_string));
+        UpdateProxyRule {
+            name: None,
+            proxy_type: None,
+            enabled: None,
+            listen_port: None,
+            listen_host: None,
+            domain: Some("app.local".to_string()),
+            path_prefix: None,
+            upstream_host: None,
+            upstream_port: None,
+            upstream_scheme: None,
+            tls_mode: None,
+            certificate_id: None,
+            access_list_id: None,
+            websocket: None,
+            keep_alive: None,
+            force_https: None,
+            custom_headers: None,
+            upstream_targets: None,
+            client_max_body_size: values[0].clone(),
+            client_body_timeout: values[1].clone(),
+            proxy_connect_timeout: values[2].clone(),
+            proxy_read_timeout: values[3].clone(),
+            proxy_send_timeout: values[4].clone(),
+            proxy_buffering: values[5].clone(),
+            sort_order: None,
+        }
+    }
+
+    #[test]
+    fn request_parameter_overrides_round_trip_and_clear_back_to_inherit() {
+        use crate::request_params::RequestParam;
+
+        let path = std::env::temp_dir().join(format!(
+            "meridian-proxy-request-params-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let db = crate::store::init_database(&path).unwrap();
+
+        let default_rule = create(&db, &create_input()).unwrap();
+        for param in RequestParam::ALL {
+            assert_eq!(
+                default_rule.request.get(param),
+                None,
+                "new rules inherit `{}`",
+                param.directive()
+            );
+        }
+
+        let mut input = create_input();
+        input.client_max_body_size = Some("2g".to_string());
+        input.client_body_timeout = Some("300s".to_string());
+        input.proxy_connect_timeout = Some("10s".to_string());
+        input.proxy_read_timeout = Some("3600s".to_string());
+        input.proxy_send_timeout = Some("3600s".to_string());
+        input.proxy_buffering = Some("off".to_string());
+        let rule = create(&db, &input).unwrap();
+
+        let stored = get_by_id(&db, &rule.id).unwrap();
+        assert_eq!(stored.request.client_max_body_size.as_deref(), Some("2g"));
+        assert_eq!(stored.request.client_body_timeout.as_deref(), Some("300s"));
+        assert_eq!(stored.request.proxy_connect_timeout.as_deref(), Some("10s"));
+        assert_eq!(stored.request.proxy_read_timeout.as_deref(), Some("3600s"));
+        assert_eq!(stored.request.proxy_send_timeout.as_deref(), Some("3600s"));
+        assert_eq!(stored.request.proxy_buffering.as_deref(), Some("off"));
+
+        update(
+            &db,
+            &rule.id,
+            &update_request_params([None, None, None, None, None, None]),
+        )
+        .unwrap();
+        let cleared = get_by_id(&db, &rule.id).unwrap();
+        for param in RequestParam::ALL {
+            assert_eq!(
+                cleared.request.get(param),
+                None,
+                "clearing `{}` must restore inheritance",
+                param.directive()
+            );
+        }
 
         drop(db);
         let _ = std::fs::remove_file(path);
