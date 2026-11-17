@@ -222,7 +222,8 @@ impl SidecarHarness {
         config
     }
 
-    /// Run the production generator into this prefix.
+    /// Run the production generator into this prefix with the built-in
+    /// request-parameter defaults.
     pub fn generate_all(
         &self,
         rules: &[ProxyRule],
@@ -232,6 +233,30 @@ impl SidecarHarness {
         worker_processes: &str,
         capabilities: Capabilities,
     ) -> Vec<PortConflict> {
+        self.generate_all_with_defaults(
+            rules,
+            certs,
+            access_lists,
+            hostname_settings,
+            worker_processes,
+            &RequestDefaults::builtin(),
+            capabilities,
+        )
+    }
+
+    /// Run the production generator with explicit request-parameter defaults, so
+    /// a test can check that values read from `app_settings` are what nginx ends
+    /// up accepting.
+    pub fn generate_all_with_defaults(
+        &self,
+        rules: &[ProxyRule],
+        certs: &[Certificate],
+        access_lists: &[(AccessList, Vec<AccessRule>)],
+        hostname_settings: &HashMap<String, HostnameSettings>,
+        worker_processes: &str,
+        request_defaults: &RequestDefaults,
+        capabilities: Capabilities,
+    ) -> Vec<PortConflict> {
         super::generate_all_configs_with_settings(
             self.data_dir(),
             rules,
@@ -239,7 +264,7 @@ impl SidecarHarness {
             access_lists,
             hostname_settings,
             worker_processes,
-            &RequestDefaults::builtin(),
+            request_defaults,
             capabilities,
         )
         .expect("config generation failed")

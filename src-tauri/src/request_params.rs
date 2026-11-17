@@ -2,9 +2,10 @@
 //! inherits, and the presets the rule form offers.
 //!
 //! Every name here is the nginx directive the parameter produces, so the column,
-//! the form row and the generated config cannot drift into separate
-//! vocabularies. A stored `NULL` means "inherit the global default"; a stored
-//! `0` means "unlimited" for the five parameters where nginx accepts it.
+//! the form row, the `app_settings` key (`defaults.request.<directive>`) and the
+//! generated config cannot drift into separate vocabularies. A stored `NULL`
+//! means "inherit the global default"; a stored `0` means "unlimited" for the
+//! five parameters where nginx accepts it.
 //!
 //! Unit rules live here and nowhere else. The form mirrors them for instant
 //! feedback, and the backend validates every value again before storing it.
@@ -13,6 +14,11 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
+use crate::store::settings_repo;
+
+/// Prefix of the `app_settings` rows that hold the global defaults: one row per
+/// parameter, keyed `defaults.request.<directive>`.
+const SETTINGS_PREFIX: &str = "defaults.request.";
 
 /// One of the six parameters a rule can override.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,6 +53,14 @@ impl RequestParam {
             RequestParam::ProxySendTimeout => "proxy_send_timeout",
             RequestParam::ProxyBuffering => "proxy_buffering",
         }
+    }
+
+    /// The parameter with this nginx directive name, as stored in `app_settings`
+    /// and sent by the settings page. `None` for anything else.
+    pub fn from_directive(directive: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|param| param.directive() == directive)
     }
 
     /// Which family of values this parameter takes.
@@ -151,10 +165,9 @@ pub struct RequestDefaults {
 }
 
 impl RequestDefaults {
-    /// Defaults equal to the behaviour the generated config had before rules
-    /// could override these parameters. Ticket #24 replaces the *source* of
-    /// these values (per-rule inheritance comes from `app_settings`), not the
-    /// values themselves.
+    /// Defaults equal to the behaviour the generated config had before either
+    /// rules or the app settings could change them. They are what a missing or
+    /// unparsable `app_settings` row falls back to.
     pub fn builtin() -> Self {
         Self {
             client_max_body_size: "100m".to_string(),
@@ -246,12 +259,63 @@ pub struct RequestParamCatalog {
     pub presets: Vec<RequestPreset>,
 }
 
-/// Read the global defaults from the single place that owns them.
+/// The `app_settings` key one parameter's global default lives under.
 ///
-/// Today that is the built-in set. Ticket #24 swaps the body to read
-/// `app_settings` under `defaults.request.*`; callers keep using this function.
-pub fn load_defaults(_conn: &Connection) -> Result<RequestDefaults, AppError> {
-    Ok(RequestDefaults::builtin())
+/// The nginx directive is the suffix, so the key, the rule column, the form row
+/// and the generated directive cannot drift into separate vocabularies.
+pub fn setting_key(param: RequestParam) -> String {
+    format!("{SETTINGS_PREFIX}{}", param.directive())
+}
+
+/// Read the global defaults from `app_settings`.
+///
+/// A missing row keeps the built-in value; so does a row whose value does not
+/// parse as the parameter's unit family (a hand-edited or downgraded database).
+/// Generation must always be able to spell out a valid directive, and the UI
+/// must never show a blank or `undefined` default.
+pub fn load_defaults(conn: &Connection) -> Result<RequestDefaults, AppError> {
+    let builtin = RequestDefaults::builtin();
+    Ok(RequestDefaults {
+        client_max_body_size: load_default(conn, RequestParam::ClientMaxBodySize, &builtin)?,
+        client_body_timeout: load_default(conn, RequestParam::ClientBodyTimeout, &builtin)?,
+        proxy_connect_timeout: load_default(conn, RequestParam::ProxyConnectTimeout, &builtin)?,
+        proxy_read_timeout: load_default(conn, RequestParam::ProxyReadTimeout, &builtin)?,
+        proxy_send_timeout: load_default(conn, RequestParam::ProxySendTimeout, &builtin)?,
+        proxy_buffering: load_default(conn, RequestParam::ProxyBuffering, &builtin)?,
+    })
+}
+
+/// One parameter's stored default, or its built-in value when the row is
+/// missing or does not parse.
+fn load_default(
+    conn: &Connection,
+    param: RequestParam,
+    builtin: &RequestDefaults,
+) -> Result<String, AppError> {
+    let Some(stored) = settings_repo::get(conn, &setting_key(param))? else {
+        return Ok(builtin.get(param).to_string());
+    };
+    let value = stored.trim();
+    if is_valid(param.kind(), value) {
+        Ok(value.to_string())
+    } else {
+        Ok(builtin.get(param).to_string())
+    }
+}
+
+/// Validate and store one global default, returning the value as stored.
+///
+/// Validation goes through the same parser the rule form and the rule columns
+/// use, so a default can never hold a value a rule could not.
+pub fn save_default(
+    conn: &Connection,
+    param: RequestParam,
+    value: &str,
+) -> Result<String, AppError> {
+    let value = value.trim();
+    validate(param, value)?;
+    settings_repo::set(conn, &setting_key(param), value)?;
+    Ok(value.to_string())
 }
 
 /// The defaults, row metadata and presets the form renders.
@@ -345,6 +409,17 @@ fn split_unit(value: &str) -> Option<(&str, &str)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::settings_repo;
+
+    /// An in-memory database carrying the one table the defaults live in.
+    fn settings_conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        )
+        .unwrap();
+        conn
+    }
 
     #[test]
     fn directives_are_the_nginx_names_in_form_order() {
@@ -359,6 +434,19 @@ mod tests {
                 "proxy_buffering",
             ]
         );
+    }
+
+    #[test]
+    fn a_directive_name_maps_back_to_its_parameter() {
+        for param in RequestParam::ALL {
+            assert_eq!(
+                RequestParam::from_directive(param.directive()),
+                Some(param),
+                "`{}` must round-trip through the settings page's directive string",
+                param.directive()
+            );
+        }
+        assert_eq!(RequestParam::from_directive("proxy_ssl_verify"), None);
     }
 
     #[test]
@@ -537,7 +625,7 @@ mod tests {
 
     #[test]
     fn the_catalog_serialises_the_contract_the_form_reads() {
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let conn = settings_conn();
         let catalog = catalog(&conn).unwrap();
         let json = serde_json::to_value(&catalog).unwrap();
 
@@ -555,5 +643,97 @@ mod tests {
         assert_eq!(json["presets"][0]["values"]["proxy_read_timeout"], "300s");
         assert_eq!(json["presets"][1]["id"], "ai_streaming");
         assert_eq!(json["presets"][2]["id"], "long_tasks");
+    }
+
+    #[test]
+    fn every_default_is_read_from_its_contract_key() {
+        assert_eq!(
+            RequestParam::ALL.map(setting_key),
+            [
+                "defaults.request.client_max_body_size",
+                "defaults.request.client_body_timeout",
+                "defaults.request.proxy_connect_timeout",
+                "defaults.request.proxy_read_timeout",
+                "defaults.request.proxy_send_timeout",
+                "defaults.request.proxy_buffering",
+            ]
+        );
+
+        let conn = settings_conn();
+        let stored = [
+            (RequestParam::ClientMaxBodySize, "2g"),
+            (RequestParam::ClientBodyTimeout, "300s"),
+            (RequestParam::ProxyConnectTimeout, "10s"),
+            (RequestParam::ProxyReadTimeout, "3600s"),
+            (RequestParam::ProxySendTimeout, "500ms"),
+            (RequestParam::ProxyBuffering, "off"),
+        ];
+        for (param, value) in stored {
+            settings_repo::set(&conn, &setting_key(param), value).unwrap();
+        }
+
+        let defaults = load_defaults(&conn).unwrap();
+        assert_eq!(defaults.client_max_body_size, "2g");
+        assert_eq!(defaults.client_body_timeout, "300s");
+        assert_eq!(defaults.proxy_connect_timeout, "10s");
+        assert_eq!(defaults.proxy_read_timeout, "3600s");
+        assert_eq!(defaults.proxy_send_timeout, "500ms");
+        assert_eq!(defaults.proxy_buffering, "off");
+
+        // The rule form's "inheriting: <value>" hint reads the same catalogue.
+        let catalog = catalog(&conn).unwrap();
+        assert_eq!(catalog.defaults.proxy_read_timeout, "3600s");
+        assert_eq!(catalog.defaults.proxy_buffering, "off");
+    }
+
+    #[test]
+    fn missing_or_unparsable_stored_defaults_fall_back_to_the_built_in_value() {
+        let conn = settings_conn();
+        // No row written yet: the app keeps behaving exactly as it did before
+        // the defaults became configurable.
+        assert_eq!(load_defaults(&conn).unwrap(), RequestDefaults::builtin());
+
+        // A hand-edited or corrupted database must not blank the value or leak
+        // `undefined` into the UI; the built-in value stays in force.
+        settings_repo::set(
+            &conn,
+            &setting_key(RequestParam::ClientMaxBodySize),
+            "2 zebra",
+        )
+        .unwrap();
+        settings_repo::set(&conn, &setting_key(RequestParam::ProxyReadTimeout), "").unwrap();
+        settings_repo::set(&conn, &setting_key(RequestParam::ProxyBuffering), "ON").unwrap();
+
+        let defaults = load_defaults(&conn).unwrap();
+        assert_eq!(defaults.client_max_body_size, "100m");
+        assert_eq!(defaults.proxy_read_timeout, "60s");
+        assert_eq!(defaults.proxy_buffering, "on");
+    }
+
+    #[test]
+    fn saving_a_default_uses_the_rule_grammar_and_names_the_field() {
+        let conn = settings_conn();
+
+        let error = save_default(&conn, RequestParam::ProxyReadTimeout, "30").unwrap_err();
+        assert_eq!(error.error_code(), "VALIDATION_REQUEST_PARAM");
+        assert!(
+            error.to_string().contains("proxy_read_timeout"),
+            "the rejection must name the field: {error}"
+        );
+        assert_eq!(
+            settings_repo::get(&conn, &setting_key(RequestParam::ProxyReadTimeout)).unwrap(),
+            None,
+            "a rejected value must not reach app_settings"
+        );
+
+        assert_eq!(
+            save_default(&conn, RequestParam::ClientMaxBodySize, " 2g ").unwrap(),
+            "2g",
+            "the stored value is the trimmed one the parser accepted"
+        );
+        assert_eq!(
+            settings_repo::get(&conn, &setting_key(RequestParam::ClientMaxBodySize)).unwrap(),
+            Some("2g".to_string())
+        );
     }
 }

@@ -854,6 +854,58 @@ mod preview_tests {
     }
 
     #[test]
+    fn a_configured_default_reaches_inheriting_rules_and_leaves_overrides_alone() {
+        let data_dir = temp_data_dir("request-defaults");
+        let db = crate::store::init_database(&data_dir.join("meridian.db")).unwrap();
+        crate::store::settings_repo::set(&db, "defaults.request.client_max_body_size", "2g")
+            .unwrap();
+        crate::store::settings_repo::set(&db, "defaults.request.proxy_read_timeout", "300s")
+            .unwrap();
+
+        let inheriting = http_rule("inherit", 18082, "inherit.local");
+        let mut overriding = http_rule("override", 18083, "override.local");
+        overriding.request.client_max_body_size = Some("1m".to_string());
+
+        let data = load_config_data(&db).unwrap();
+        assert_eq!(data.request_defaults.client_max_body_size, "2g");
+        let conflicts = generate_all_configs_with_settings(
+            &data_dir,
+            &[inheriting, overriding],
+            &data.certs,
+            &data.access_lists,
+            &data.hostname_settings,
+            &data.worker_processes,
+            &data.request_defaults,
+            crate::nginx_manager::Capabilities::default(),
+        )
+        .unwrap();
+        assert!(conflicts.is_empty());
+
+        let inheriting =
+            fs::read_to_string(data_dir.join("nginx/conf.d/18082_inherit_local.conf")).unwrap();
+        assert!(inheriting.contains("        client_max_body_size 2g;"));
+        assert!(inheriting.contains("        proxy_read_timeout 300s;"));
+        assert!(
+            inheriting.contains("        proxy_connect_timeout 60s;"),
+            "parameters without a configured default keep the built-in value"
+        );
+
+        let overriding =
+            fs::read_to_string(data_dir.join("nginx/conf.d/18083_override_local.conf")).unwrap();
+        assert!(
+            overriding.contains("        client_max_body_size 1m;"),
+            "a rule with its own value must not pick up the default"
+        );
+        assert!(
+            overriding.contains("        proxy_read_timeout 300s;"),
+            "a rule inheriting one parameter still takes the configured default"
+        );
+
+        drop(db);
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
     fn a_hostname_settings_row_turns_off_one_header_in_the_generated_file() {
         let data_dir = temp_data_dir("hostname-settings");
         let settings = HashMap::from([(
@@ -1080,6 +1132,54 @@ mod sidecar_tests {
             assert!(config.contains("        proxy_read_timeout 3600s;"));
             assert!(config.contains("        proxy_send_timeout 3600s;"));
             assert!(config.contains("        proxy_buffering off;"));
+        }) else {
+            return;
+        };
+    }
+
+    #[test]
+    fn configured_global_defaults_are_accepted_by_the_sidecar() {
+        let Some(()) = SidecarHarness::with_configs(|harness| {
+            let db = crate::store::init_database(&harness.data_dir().join("meridian.db")).unwrap();
+            for (key, value) in [
+                ("defaults.request.client_max_body_size", "2g"),
+                ("defaults.request.client_body_timeout", "300s"),
+                ("defaults.request.proxy_connect_timeout", "10s"),
+                ("defaults.request.proxy_read_timeout", "3600s"),
+                ("defaults.request.proxy_send_timeout", "3600s"),
+                ("defaults.request.proxy_buffering", "off"),
+            ] {
+                crate::store::settings_repo::set(&db, key, value).unwrap();
+            }
+            let defaults = crate::request_params::load_defaults(&db).unwrap();
+
+            // The rule sets nothing, so every value in the generated location is
+            // the configured default read back out of `app_settings`.
+            let rule = test_support::http_rule("rule-http-000000000004", "defaults.local");
+            harness.generate_all_with_defaults(
+                &[rule],
+                &[],
+                &[],
+                &HashMap::new(),
+                "1",
+                &defaults,
+                harness.capabilities(),
+            );
+
+            let config = harness.read("conf.d/18080_defaults_local.conf");
+            for expected in [
+                "        client_max_body_size 2g;",
+                "        client_body_timeout 300s;",
+                "        proxy_connect_timeout 10s;",
+                "        proxy_read_timeout 3600s;",
+                "        proxy_send_timeout 3600s;",
+                "        proxy_buffering off;",
+            ] {
+                assert!(
+                    config.contains(expected),
+                    "the configured default `{expected}` is missing from:\n{config}"
+                );
+            }
         }) else {
             return;
         };

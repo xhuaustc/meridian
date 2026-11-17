@@ -17,7 +17,8 @@ import { useAccessStore } from '../stores/access-store';
 import { useHostsStore } from '../stores/hosts-store';
 import * as api from '../lib/api';
 import { cn } from '../lib/utils';
-import type { RecoveryPreview, EngineCapabilities } from '../types';
+import { REQUEST_PARAM_HINT_KEYS, REQUEST_PARAM_LABEL_KEYS, isValidRequestParamValue } from '../lib/requestParams';
+import type { RecoveryPreview, EngineCapabilities, RequestParamCatalog, RequestParamKey, RequestParamValues } from '../types';
 
 export function SettingsPage() {
   const { t, i18n } = useTranslation('common');
@@ -40,6 +41,9 @@ export function SettingsPage() {
   const [appVersion, setAppVersion] = useState('');
   const [capabilities, setCapabilities] = useState<EngineCapabilities | null>(null);
   const [capabilitiesLoading, setCapabilitiesLoading] = useState(true);
+  const [requestParamCatalog, setRequestParamCatalog] = useState<RequestParamCatalog | null>(null);
+  const [requestDefaultDrafts, setRequestDefaultDrafts] = useState<RequestParamValues | null>(null);
+  const [requestDefaultErrors, setRequestDefaultErrors] = useState<Partial<Record<RequestParamKey, boolean>>>({});
 
   useEffect(() => {
     // Load app version
@@ -55,6 +59,15 @@ export function SettingsPage() {
     api.getSetting('worker_processes').then((v) => {
       if (v) setWorkerProcesses(v);
     });
+    // The global request-parameter defaults. The backend falls back to its
+    // built-in values for missing rows, so the inputs never start blank.
+    api
+      .getRequestParamDefaults()
+      .then((catalog) => {
+        setRequestParamCatalog(catalog);
+        setRequestDefaultDrafts(catalog.defaults);
+      })
+      .catch(() => {});
     api
       .getEngineCapabilities()
       .then((caps) => setCapabilities(caps))
@@ -132,6 +145,49 @@ export function SettingsPage() {
   const handleLanguageChange = (lang: string) => {
     i18n.changeLanguage(lang);
     setLanguage(lang);
+  };
+
+  const clearRequestDefaultError = (directive: RequestParamKey) => {
+    setRequestDefaultErrors((current) => {
+      const next = { ...current };
+      delete next[directive];
+      return next;
+    });
+  };
+
+  // Each row saves on blur, like the other settings here. A value the backend
+  // parser would reject stays unsaved and is reported against its own field.
+  const saveRequestDefault = async (directive: RequestParamKey) => {
+    if (!requestParamCatalog || !requestDefaultDrafts) return;
+    const value = requestDefaultDrafts[directive].trim();
+    if (value === requestParamCatalog.defaults[directive]) {
+      clearRequestDefaultError(directive);
+      return;
+    }
+    if (!isValidRequestParamValue(directive, value)) {
+      setRequestDefaultErrors((current) => ({ ...current, [directive]: true }));
+      return;
+    }
+    try {
+      const catalog = await api.setRequestParamDefault(directive, value);
+      setRequestParamCatalog(catalog);
+      setRequestDefaultDrafts((current) =>
+        current ? { ...current, [directive]: catalog.defaults[directive] } : catalog.defaults,
+      );
+      clearRequestDefaultError(directive);
+    } catch (e) {
+      addToast('error', formatError(e));
+    }
+  };
+
+  const requestDefaultErrorMessage = (directive: RequestParamKey) => {
+    const field = t(REQUEST_PARAM_LABEL_KEYS[directive]);
+    return directive === 'proxy_buffering'
+      ? t('proxyForm.requestParamInvalidToggle', { field })
+      : t('proxyForm.requestParamInvalidUnit', {
+          field,
+          example: t(REQUEST_PARAM_HINT_KEYS[directive]),
+        });
   };
 
   const themes: { value: 'light' | 'dark' | 'system'; labelKey: string }[] = [
@@ -300,6 +356,64 @@ export function SettingsPage() {
                   ? t('settings.http2Enabled')
                   : t('settings.http2Unsupported')}
           </span>
+        </div>
+      </section>
+
+      {/* Request Parameter Defaults */}
+      <section className="mb-8">
+        <h2 className="text-[13px] font-semibold mb-3 pb-2 border-b border-border">
+          {t('settings.requestDefaults')}
+        </h2>
+        <p className="text-[11px] text-text-tertiary mb-3">
+          {t('settings.requestDefaultsDesc')}
+        </p>
+        <div className="border border-border rounded-[var(--radius-sm)] divide-y divide-border">
+          {requestParamCatalog && requestDefaultDrafts ? (
+            requestParamCatalog.params.map((info) => {
+              const directive = info.directive;
+              const invalid = !!requestDefaultErrors[directive];
+              return (
+                <div key={directive} className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[13px] font-medium">
+                        {t(REQUEST_PARAM_LABEL_KEYS[directive])}
+                      </div>
+                      <div className="text-[11px] text-text-tertiary mt-0.5">
+                        {t(REQUEST_PARAM_HINT_KEYS[directive])}
+                      </div>
+                    </div>
+                    <input
+                      value={requestDefaultDrafts[directive]}
+                      spellCheck={false}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setRequestDefaultDrafts((current) =>
+                          current ? { ...current, [directive]: value } : current,
+                        );
+                        clearRequestDefaultError(directive);
+                      }}
+                      onBlur={() => saveRequestDefault(directive)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                      }}
+                      className={cn(
+                        'w-[132px] px-3 py-[5px] border rounded-[var(--radius-sm)] text-[12px] bg-bg-primary text-text-primary text-right outline-none focus:border-accent',
+                        invalid ? 'border-error' : 'border-border',
+                      )}
+                    />
+                  </div>
+                  {invalid && (
+                    <p className="text-[11px] text-error mt-1 text-right">
+                      {requestDefaultErrorMessage(directive)}
+                    </p>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <div className="px-4 py-3 text-[12px] text-text-tertiary">{t('common.loading')}</div>
+          )}
         </div>
       </section>
 
