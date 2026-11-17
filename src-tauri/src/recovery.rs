@@ -209,6 +209,89 @@ pub fn preview_bundle(path: &Path, passphrase: &str) -> Result<RecoveryPreview, 
     Ok(read_bundle(path, passphrase)?.preview)
 }
 
+/// Tables a restore replaces, in row-copy order: referenced rows land before the
+/// rows pointing at them, so deletions run in the reverse order.
+const RESTORE_TABLES: [&str; 8] = [
+    "dns_credentials",
+    "acme_accounts",
+    "access_lists",
+    "certificates",
+    "access_rules",
+    "proxy_rules",
+    "host_entries",
+    "app_settings",
+];
+
+/// Quote an SQL identifier for interpolation. Values are never interpolated.
+fn quote_identifier(identifier: &str) -> String {
+    format!("\"{}\"", identifier.replace('"', "\"\""))
+}
+
+/// Column names of `table`, taken from the connection's main schema or from the
+/// attached `restored` schema when `schema` is given.
+fn table_columns(
+    conn: &Connection,
+    schema: Option<&str>,
+    table: &str,
+) -> Result<Vec<String>, AppError> {
+    let pragma = match schema {
+        Some(schema) => format!(
+            "PRAGMA {}.table_info({})",
+            quote_identifier(schema),
+            quote_identifier(table)
+        ),
+        None => format!("PRAGMA table_info({})", quote_identifier(table)),
+    };
+    let mut statement = conn.prepare(&pragma)?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(columns)
+}
+
+/// Replace every restored table's rows with the rows from the attached
+/// `restored` database.
+///
+/// Rows move column by column through the intersection of the bundled database's
+/// columns and the current table definition, which is the one place that decides
+/// what a future schema change does to a restore: a column added to the schema
+/// after a bundle was written is absent from the bundle, so it is left out of the
+/// `INSERT` and keeps its schema default. A column removed from the schema is
+/// likewise left behind in the bundle.
+fn replace_tables_from_restored(conn: &Connection) -> Result<(), AppError> {
+    for table in RESTORE_TABLES.iter().rev() {
+        conn.execute(&format!("DELETE FROM {}", quote_identifier(table)), [])?;
+    }
+    for table in RESTORE_TABLES {
+        let current_columns = table_columns(conn, None, table)?;
+        let bundled_columns = table_columns(conn, Some("restored"), table)?;
+        if bundled_columns.is_empty() {
+            return Err(recovery_error(&format!(
+                "Recovery database is missing table {}",
+                table
+            )));
+        }
+        let copied_columns = current_columns
+            .iter()
+            .filter(|column| bundled_columns.contains(*column))
+            .map(|column| quote_identifier(column))
+            .collect::<Vec<_>>();
+        if copied_columns.is_empty() {
+            return Err(recovery_error(&format!(
+                "Recovery database has no columns in common with table {}",
+                table
+            )));
+        }
+        let columns = copied_columns.join(", ");
+        let table = quote_identifier(table);
+        conn.execute(
+            &format!("INSERT INTO {table} ({columns}) SELECT {columns} FROM \"restored\".{table}"),
+            [],
+        )?;
+    }
+    Ok(())
+}
+
 pub fn restore_bundle(
     db: &mut Connection,
     db_path: &Path,
@@ -299,24 +382,7 @@ pub fn restore_bundle(
         }
 
         let tx = db.transaction()?;
-        tx.execute_batch(
-            "DELETE FROM access_rules;
-             DELETE FROM proxy_rules;
-             DELETE FROM certificates;
-             DELETE FROM access_lists;
-             DELETE FROM dns_credentials;
-             DELETE FROM acme_accounts;
-             DELETE FROM host_entries;
-             DELETE FROM app_settings;
-             INSERT INTO dns_credentials SELECT * FROM restored.dns_credentials;
-             INSERT INTO acme_accounts SELECT * FROM restored.acme_accounts;
-             INSERT INTO access_lists SELECT * FROM restored.access_lists;
-             INSERT INTO certificates SELECT * FROM restored.certificates;
-             INSERT INTO access_rules SELECT * FROM restored.access_rules;
-             INSERT INTO proxy_rules SELECT * FROM restored.proxy_rules;
-             INSERT INTO host_entries SELECT * FROM restored.host_entries;
-             INSERT INTO app_settings SELECT * FROM restored.app_settings;",
-        )?;
+        replace_tables_from_restored(&tx)?;
         for (id, cert_path, key_path) in &rewritten_paths {
             tx.execute(
                 "UPDATE certificates SET cert_path = ?1, key_path = ?2 WHERE id = ?3",
@@ -358,6 +424,64 @@ pub fn restore_bundle(
 mod tests {
     use super::*;
 
+    const PASSPHRASE: &str = "correct horse battery staple";
+
+    fn temp_dir(prefix: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("meridian-{}-{}", prefix, uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// The full restore path drives the nginx config engine, so it only runs
+    /// where a sidecar sits next to the test binary. The column copy itself is
+    /// covered by the tests that attach the bundled database directly.
+    fn nginx_sidecar_available() -> bool {
+        std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(Path::to_path_buf))
+            .map(|dir| dir.join(if cfg!(windows) { "nginx.exe" } else { "nginx" }))
+            .map(|path| path.exists())
+            .unwrap_or(false)
+    }
+
+    /// Create a database whose `proxy_rules` table predates the
+    /// `upstream_scheme` column, like a bundle exported by an older build.
+    fn legacy_database(path: &Path) {
+        let db = store::init_database(path).unwrap();
+        db.execute_batch(
+            "ALTER TABLE proxy_rules DROP COLUMN upstream_scheme;
+             INSERT INTO proxy_rules
+                 (id, name, proxy_type, listen_port, upstream_host, upstream_port, created_at, updated_at)
+             VALUES
+                 ('legacy-rule', 'legacy rule', 'http', 8080, '127.0.0.1', 9000, 'now', 'now');",
+        )
+        .unwrap();
+    }
+
+    /// Decode the database a bundle carries into a standalone file.
+    fn unpack_bundle_database(bundle_path: &Path, dir: &Path) -> PathBuf {
+        let bundle = read_bundle(bundle_path, PASSPHRASE).unwrap();
+        let import_path = dir.join("import.db");
+        fs::write(
+            &import_path,
+            base64::engine::general_purpose::STANDARD
+                .decode(&bundle.database)
+                .unwrap(),
+        )
+        .unwrap();
+        import_path
+    }
+
+    /// Attach an unpacked bundle and run the restore copy into `live`.
+    fn copy_bundle_into(live: &Connection, import_path: &Path) {
+        let import_path_str = import_path.to_string_lossy();
+        live.execute("ATTACH DATABASE ?1 AS restored", [import_path_str.as_ref()])
+            .unwrap();
+        replace_tables_from_restored(live).unwrap();
+        live.execute_batch("DETACH DATABASE restored").unwrap();
+    }
+
     #[test]
     fn encrypted_bundle_roundtrip_rejects_wrong_passphrase_and_tampering() {
         let dir =
@@ -368,24 +492,21 @@ mod tests {
         db.execute("INSERT INTO host_entries (id, ip, hostname, created_at, updated_at) VALUES ('one', '127.0.0.1', 'local.test', 'now', 'now')", []).unwrap();
         drop(db);
         let bundle_path = dir.join("backup.meridian");
-        let expected =
-            create_bundle(&db_path, &bundle_path, "correct horse battery staple").unwrap();
+        let expected = create_bundle(&db_path, &bundle_path, PASSPHRASE).unwrap();
         assert_eq!(expected.host_count, 1);
         let file = fs::read(&bundle_path).unwrap();
         assert!(file.starts_with(MAGIC));
         assert!(!file.windows("local.test".len()).any(|w| w == b"local.test"));
         assert!(preview_bundle(&bundle_path, "wrong password long enough").is_err());
         assert_eq!(
-            preview_bundle(&bundle_path, "correct horse battery staple")
-                .unwrap()
-                .host_count,
+            preview_bundle(&bundle_path, PASSPHRASE).unwrap().host_count,
             1
         );
         let mut tampered = file;
         let final_byte = tampered.last_mut().unwrap();
         *final_byte ^= 1;
         fs::write(&bundle_path, tampered).unwrap();
-        assert!(preview_bundle(&bundle_path, "correct horse battery staple").is_err());
+        assert!(preview_bundle(&bundle_path, PASSPHRASE).is_err());
         let _ = fs::remove_file(bundle_path);
         let _ = fs::remove_file(db_path);
         let _ = fs::remove_dir(dir);
@@ -393,14 +514,8 @@ mod tests {
 
     #[test]
     fn restore_bundle_replaces_database_and_keeps_previous_backup() {
-        if !std::env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join(if cfg!(windows) { "nginx.exe" } else { "nginx" })
-            .exists()
-        {
-            return; // The full restore check runs when a local Nginx sidecar is available.
+        if !nginx_sidecar_available() {
+            return;
         }
         let dir =
             std::env::temp_dir().join(format!("meridian-restore-test-{}", uuid::Uuid::new_v4()));
@@ -413,17 +528,11 @@ mod tests {
         let original_cert = crate::store::cert_repo::create(&db, &material).unwrap();
         let original_key = fs::read(&original_cert.key_path).unwrap();
         let bundle_path = dir.join("backup.meridian");
-        create_bundle(&db_path, &bundle_path, "correct horse battery staple").unwrap();
+        create_bundle(&db_path, &bundle_path, PASSPHRASE).unwrap();
         db.execute("DELETE FROM host_entries", []).unwrap();
         db.execute("INSERT INTO host_entries (id, ip, hostname, created_at, updated_at) VALUES ('new', '127.0.0.1', 'new.test', 'now', 'now')", []).unwrap();
-        let previous_db = restore_bundle(
-            &mut db,
-            &db_path,
-            &dir,
-            &bundle_path,
-            "correct horse battery staple",
-        )
-        .unwrap();
+        let previous_db =
+            restore_bundle(&mut db, &db_path, &dir, &bundle_path, PASSPHRASE).unwrap();
         let restored: String = db
             .query_row("SELECT hostname FROM host_entries", [], |row| row.get(0))
             .unwrap();
@@ -490,5 +599,172 @@ mod tests {
         ] {
             let _ = fs::remove_dir(dir.join(subdir));
         }
+    }
+
+    #[test]
+    fn restore_copy_moves_every_current_column() {
+        let dir = temp_dir("recovery-current-columns");
+        let source_path = dir.join("source.db");
+        let source = store::init_database(&source_path).unwrap();
+        source
+            .execute_batch(
+                "INSERT INTO dns_credentials (id, name, provider, credentials_json, created_at, updated_at)
+                 VALUES ('dns-one', 'main', 'cloudflare', '{\"token\":\"secret\"}', 'now', 'now');
+                 INSERT INTO proxy_rules
+                     (id, name, proxy_type, enabled, listen_port, listen_host, domain, path_prefix,
+                      upstream_host, upstream_port, tls_mode, websocket, keep_alive, custom_headers,
+                      sort_order, created_at, updated_at, upstream_targets, upstream_scheme)
+                 VALUES
+                     ('rule-one', 'demo', 'http', 1, 8080, '127.0.0.1', 'demo.test', '/',
+                      '127.0.0.1', 9000, 'none', 1, 1, 'X-Demo: yes',
+                      3, 'now', 'now', '[{\"host\":\"10.0.0.2\",\"port\":9000}]', 'https');
+                 INSERT INTO host_entries (id, ip, hostname, comment, enabled, created_at, updated_at)
+                 VALUES ('host-one', '127.0.0.1', 'demo.test', 'keep me', 1, 'now', 'now');
+                 INSERT INTO app_settings (key, value) VALUES ('worker_processes', '4');",
+            )
+            .unwrap();
+        drop(source);
+        let bundle_path = dir.join("current.meridian");
+        create_bundle(&source_path, &bundle_path, PASSPHRASE).unwrap();
+        let import_path = unpack_bundle_database(&bundle_path, &dir);
+
+        let live_path = dir.join("live.db");
+        let live = store::init_database(&live_path).unwrap();
+        copy_bundle_into(&live, &import_path);
+
+        let (name, scheme, targets, keep_alive): (String, String, String, i64) = live
+            .query_row(
+                "SELECT name, upstream_scheme, COALESCE(upstream_targets, ''), keep_alive
+                 FROM proxy_rules",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(name, "demo");
+        assert_eq!(scheme, "https");
+        assert_eq!(targets, r#"[{"host":"10.0.0.2","port":9000}]"#);
+        assert_eq!(keep_alive, 1);
+        let (comment, enabled): (Option<String>, i64) = live
+            .query_row(
+                "SELECT comment, enabled FROM host_entries WHERE id = 'host-one'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(comment.as_deref(), Some("keep me"));
+        assert_eq!(enabled, 1);
+        let credentials: String = live
+            .query_row(
+                "SELECT credentials_json FROM dns_credentials WHERE id = 'dns-one'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(credentials, r#"{"token":"secret"}"#);
+        let worker_processes: String = live
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = 'worker_processes'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(worker_processes, "4");
+        drop(live);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restore_copy_defaults_columns_absent_from_the_bundle() {
+        let dir = temp_dir("recovery-missing-column");
+        let legacy_path = dir.join("legacy.db");
+        legacy_database(&legacy_path);
+        let bundle_path = dir.join("legacy.meridian");
+        create_bundle(&legacy_path, &bundle_path, PASSPHRASE).unwrap();
+        let import_path = unpack_bundle_database(&bundle_path, &dir);
+
+        let live_path = dir.join("live.db");
+        let live = store::init_database(&live_path).unwrap();
+        copy_bundle_into(&live, &import_path);
+
+        let (name, scheme, listen_port): (String, String, i64) = live
+            .query_row(
+                "SELECT name, upstream_scheme, listen_port FROM proxy_rules",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(name, "legacy rule");
+        assert_eq!(listen_port, 8080);
+        assert_eq!(scheme, "http"); // Schema default for the column the bundle predates.
+        drop(live);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restore_bundle_accepts_a_bundle_missing_a_later_column() {
+        if !nginx_sidecar_available() {
+            return;
+        }
+        let dir = temp_dir("recovery-missing-column-restore");
+        let legacy_path = dir.join("legacy.db");
+        legacy_database(&legacy_path);
+        let bundle_path = dir.join("legacy.meridian");
+        create_bundle(&legacy_path, &bundle_path, PASSPHRASE).unwrap();
+
+        let live_path = dir.join("live.db");
+        let mut live = store::init_database(&live_path).unwrap();
+        restore_bundle(&mut live, &live_path, &dir, &bundle_path, PASSPHRASE).unwrap();
+        let (name, scheme): (String, String) = live
+            .query_row("SELECT name, upstream_scheme FROM proxy_rules", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(name, "legacy rule");
+        assert_eq!(scheme, "http");
+        drop(live);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restore_bundle_rejects_certificate_material_that_does_not_match_the_database() {
+        let dir = temp_dir("recovery-certificate-mismatch");
+        let db_path = dir.join("meridian.db");
+        let mut db = store::init_database(&db_path).unwrap();
+        let snapshot_path = store::backup_database(&db_path).unwrap();
+        let database = fs::read(&snapshot_path).unwrap();
+        let _ = fs::remove_file(&snapshot_path);
+        let bundle = RecoveryBundle {
+            version: 1,
+            preview: RecoveryPreview {
+                exported_at: chrono::Utc::now().to_rfc3339(),
+                proxy_count: 0,
+                certificate_count: 0,
+                host_count: 0,
+                dns_credential_count: 0,
+            },
+            database: base64::engine::general_purpose::STANDARD.encode(database),
+            certificates: vec![CertMaterial {
+                id: "missing-from-database".to_string(),
+                cert: base64::engine::general_purpose::STANDARD
+                    .encode("-----BEGIN CERTIFICATE-----\n"),
+                key: base64::engine::general_purpose::STANDARD
+                    .encode("-----BEGIN PRIVATE KEY-----\n"),
+            }],
+        };
+        let bundle_path = dir.join("mismatch.meridian");
+        fs::write(&bundle_path, encrypt_bundle(&bundle, PASSPHRASE).unwrap()).unwrap();
+
+        let error = restore_bundle(&mut db, &db_path, &dir, &bundle_path, PASSPHRASE)
+            .expect_err("certificate material must match the bundled database");
+        assert!(
+            matches!(
+                &error,
+                AppError::Validation(message)
+                    if message == "Recovery certificate files do not match database records"
+            ),
+            "unexpected error: {error}"
+        );
+        drop(db);
+        let _ = fs::remove_dir_all(&dir);
     }
 }
