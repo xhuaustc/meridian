@@ -1,5 +1,6 @@
 pub mod conflict;
 pub mod error_pages;
+pub mod hsts;
 pub mod http_config;
 pub mod main_config;
 pub mod security_headers;
@@ -936,6 +937,51 @@ mod preview_tests {
         let _ = fs::remove_dir_all(&data_dir);
     }
 
+    #[test]
+    fn hsts_reaches_every_tls_server_block_once_and_no_plain_one() {
+        use crate::config_engine::test_support::assert_hsts_only_in_tls_server_blocks;
+
+        let data_dir = temp_data_dir("hsts");
+        let rules = vec![
+            https_rule("tls-443", 443, "app.local", false),
+            https_rule("tls-8443", 8443, "app.local", false),
+            http_rule("plain", 80, "app.local"),
+        ];
+        let settings = HashMap::from([(
+            "app.local".to_string(),
+            HostnameSettings {
+                hostname: "app.local".to_string(),
+                hsts_enabled: true,
+                hsts_max_age: 600,
+                hsts_include_subdomains: true,
+                ..HostnameSettings::default()
+            },
+        )]);
+        assert!(generate_into_with_settings(&data_dir, &rules, &[], &settings).is_empty());
+
+        let tls_443 = fs::read_to_string(data_dir.join("nginx/conf.d/443_app_local.conf")).unwrap();
+        let tls_8443 =
+            fs::read_to_string(data_dir.join("nginx/conf.d/8443_app_local.conf")).unwrap();
+        let plain = fs::read_to_string(data_dir.join("nginx/conf.d/80_app_local.conf")).unwrap();
+
+        for config in [&tls_443, &tls_8443] {
+            assert_eq!(
+                config.matches("Strict-Transport-Security").count(),
+                1,
+                "every TLS server block is a separate HTTPS endpoint and carries its own header"
+            );
+            assert!(config.contains("max-age=600; includeSubDomains"));
+            assert_hsts_only_in_tls_server_blocks(config);
+        }
+        assert_eq!(
+            plain.matches("Strict-Transport-Security").count(),
+            0,
+            "the same hostname's plain server block must not advertise HSTS"
+        );
+        assert_hsts_only_in_tls_server_blocks(&plain);
+        let _ = fs::remove_dir_all(&data_dir);
+    }
+
     /// The synthesised block must be accepted by the nginx binary we ship, not
     /// just by our own string checks. Skips (loudly) when the sidecar has not
     /// been built on this machine.
@@ -1021,8 +1067,10 @@ mod sidecar_tests {
 
     use super::test_support::{
         self, assert_every_add_header_applies_to_error_responses,
-        assert_no_add_header_in_locations, count_directive_in_blocks, SidecarHarness,
+        assert_hsts_only_in_tls_server_blocks, assert_no_add_header_in_locations,
+        count_directive_in_blocks, SidecarHarness,
     };
+    use crate::store::models::{Certificate, HostnameSettings};
 
     #[test]
     fn generated_http_and_stream_configs_are_accepted_by_the_sidecar() {
@@ -1098,6 +1146,77 @@ mod sidecar_tests {
         );
         assert_no_add_header_in_locations(&http_config);
         assert_every_add_header_applies_to_error_responses(&http_config);
+    }
+
+    /// HSTS is handed to the real sidecar too: a TLS server block with HSTS on
+    /// plus a plain block for the same hostname. Skips (loudly) when the
+    /// sidecar has not been built.
+    #[test]
+    fn hsts_on_tls_server_blocks_is_accepted_by_the_sidecar() {
+        let Some((tls_config, plain_config)) = SidecarHarness::with_configs(|harness| {
+            let generated = crate::cert_manager::generate_self_signed(
+                harness.data_dir(),
+                "hsts-test",
+                "hsts.local",
+                2,
+            )
+            .expect("self-signed certificate");
+            let cert = Certificate {
+                id: "cert-hsts".to_string(),
+                name: generated.name,
+                domain: generated.domain,
+                cert_path: generated.cert_path,
+                key_path: generated.key_path,
+                source: generated.source,
+                expires_at: generated.expires_at,
+                auto_renew: false,
+                created_at: "2024-01-01T00:00:00Z".to_string(),
+                dns_credential_id: None,
+                acme_account_id: None,
+                acme_domains: None,
+                last_renew_error: None,
+                last_renew_at: None,
+                status: "ready".to_string(),
+            };
+            let mut tls_rule = test_support::http_rule("rule-http-000000000031", "hsts.local");
+            tls_rule.listen_port = 18443;
+            tls_rule.tls_mode = "terminate".to_string();
+            tls_rule.certificate_id = Some(cert.id.clone());
+            let plain_rule = test_support::http_rule("rule-http-000000000032", "hsts.local");
+            let settings = HashMap::from([(
+                "hsts.local".to_string(),
+                HostnameSettings {
+                    hostname: "hsts.local".to_string(),
+                    hsts_enabled: true,
+                    hsts_max_age: 600,
+                    hsts_include_subdomains: true,
+                    ..HostnameSettings::default()
+                },
+            )]);
+
+            harness.generate_all(
+                &[tls_rule, plain_rule],
+                &[cert],
+                &[],
+                &settings,
+                "1",
+                harness.capabilities(),
+            );
+            (
+                harness.read("conf.d/18443_hsts_local.conf"),
+                harness.read("conf.d/18080_hsts_local.conf"),
+            )
+        }) else {
+            return;
+        };
+
+        assert!(tls_config.contains(
+            "    add_header Strict-Transport-Security \"max-age=600; includeSubDomains\" always;\n"
+        ));
+        assert_eq!(tls_config.matches("Strict-Transport-Security").count(), 1);
+        assert_eq!(plain_config.matches("Strict-Transport-Security").count(), 0);
+        assert_hsts_only_in_tls_server_blocks(&tls_config);
+        assert_hsts_only_in_tls_server_blocks(&plain_config);
     }
 
     #[test]

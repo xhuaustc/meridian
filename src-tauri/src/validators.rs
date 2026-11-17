@@ -339,6 +339,35 @@ pub fn validate_host_entry(ip: &str, hostname: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Bounds for a hostname's HSTS switch.
+///
+/// The domain is not parsed as a strict DNS name: rule domains may be wildcards
+/// or a default server, and this function only has to stop a value that would
+/// break the generated nginx config. `max_age` is what browsers store, so the
+/// ceiling is one year, and zero is rejected -- turning HSTS off is the
+/// toggle's job, not a `max-age=0` special case.
+pub fn validate_hsts_settings(domain: &str, max_age: i64) -> Result<(), AppError> {
+    let domain = domain.trim();
+    if domain.is_empty() {
+        return Err(AppError::Validation("domain must not be empty".to_string()));
+    }
+    if domain.len() > 253 {
+        return Err(AppError::Validation(
+            "domain must not exceed 253 characters".to_string(),
+        ));
+    }
+    if domain.chars().any(char::is_whitespace) {
+        return Err(AppError::Validation(format!("Invalid domain '{}'", domain)));
+    }
+    if !(1..=crate::config_engine::hsts::MAX_AGE_LIMIT).contains(&max_age) {
+        return Err(AppError::Validation(format!(
+            "hsts_max_age must be between 1 and {} seconds",
+            crate::config_engine::hsts::MAX_AGE_LIMIT
+        )));
+    }
+    Ok(())
+}
+
 pub fn validate_update_proxy_merged(
     input: &UpdateProxyRule,
     existing: &ProxyRule,
@@ -733,5 +762,30 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(message.contains("proxy_read_timeout"), "{message}");
+    }
+
+    #[test]
+    fn test_hsts_settings_accept_the_default_and_the_one_year_ceiling() {
+        assert!(validate_hsts_settings("app.local", 300).is_ok());
+        assert!(
+            validate_hsts_settings("app.local", crate::config_engine::hsts::MAX_AGE_LIMIT).is_ok()
+        );
+    }
+
+    #[test]
+    fn test_hsts_settings_reject_zero_negative_and_longer_than_one_year() {
+        for max_age in [0, -1, crate::config_engine::hsts::MAX_AGE_LIMIT + 1] {
+            let message = validate_hsts_settings("app.local", max_age)
+                .unwrap_err()
+                .to_string();
+            assert!(message.contains("hsts_max_age"), "{message}");
+        }
+    }
+
+    #[test]
+    fn test_hsts_settings_reject_an_empty_or_whitespace_domain() {
+        assert!(validate_hsts_settings("", 300).is_err());
+        assert!(validate_hsts_settings("   ", 300).is_err());
+        assert!(validate_hsts_settings("app local", 300).is_err());
     }
 }

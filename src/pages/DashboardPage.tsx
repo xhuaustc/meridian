@@ -14,7 +14,7 @@ import { useAccessStore } from '../stores/access-store';
 import { useHostsStore } from '../stores/hosts-store';
 import { useToastStore } from '../stores/toast-store';
 import { useApiError } from '../hooks/useApiError';
-import { checkExpiringCerts, createProxy, listProxies, checkHostnameExists, deleteHost, batchToggleProxies, batchDeleteProxies } from '../lib/api';
+import { checkExpiringCerts, createProxy, listProxies, checkHostnameExists, deleteHost, batchToggleProxies, batchDeleteProxies, listHstsHostnames } from '../lib/api';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { cn } from '../lib/utils';
 import type { ProxyRule } from '../types';
@@ -60,6 +60,8 @@ function isLocalDevDomain(domain: string): boolean {
 function getRuleHealth(
   rule: ProxyRule,
   certIds: Set<string>,
+  expiringCertIds: Set<string>,
+  hstsHostnames: Set<string>,
   hostnames: Set<string>,
 ): { labelKey: string; tone: 'success' | 'warning' | 'muted' } {
   if (!rule.enabled) {
@@ -67,6 +69,17 @@ function getRuleHealth(
   }
   if (rule.tls_mode === 'terminate' && rule.certificate_id && !certIds.has(rule.certificate_id)) {
     return { labelKey: 'dashboard.statusCertMissing', tone: 'warning' };
+  }
+  // HSTS makes an expired certificate unrecoverable: the browser will not let
+  // the visitor click through the warning, so the site is simply unreachable.
+  if (
+    rule.tls_mode === 'terminate' &&
+    rule.certificate_id &&
+    rule.domain &&
+    hstsHostnames.has(rule.domain) &&
+    expiringCertIds.has(rule.certificate_id)
+  ) {
+    return { labelKey: 'dashboard.statusHstsCertExpiring', tone: 'warning' };
   }
   if (
     rule.proxy_type === 'http' &&
@@ -93,6 +106,8 @@ export function DashboardPage() {
   const [filter, setFilter] = useState<FilterType>('all');
   const [deleteTarget, setDeleteTarget] = useState<ProxyRule | null>(null);
   const [expiringCount, setExpiringCount] = useState(0);
+  const [expiringCertIds, setExpiringCertIds] = useState<Set<string>>(new Set());
+  const [hstsHostnames, setHstsHostnames] = useState<Set<string>>(new Set());
   const [hostsCleanupTarget, setHostsCleanupTarget] = useState<{ hostname: string; hostEntryId: string } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
@@ -103,7 +118,13 @@ export function DashboardPage() {
     fetchAccessLists();
     fetchHostEntries();
     checkExpiringCerts(30)
-      .then((certs) => setExpiringCount(certs.length))
+      .then((certs) => {
+        setExpiringCount(certs.length);
+        setExpiringCertIds(new Set(certs.map((cert) => cert.id)));
+      })
+      .catch(() => {});
+    listHstsHostnames()
+      .then((hostnames) => setHstsHostnames(new Set(hostnames)))
       .catch(() => {});
   }, [fetchProxies, fetchCertificates, fetchAccessLists, fetchHostEntries]);
 
@@ -131,6 +152,17 @@ export function DashboardPage() {
 
   const certIds = useMemo(() => new Set(certificates.map((cert) => cert.id)), [certificates]);
   const hostnames = useMemo(() => new Set(hostEntries.map((entry) => entry.hostname)), [hostEntries]);
+
+  /** Hostnames in the current batch selection whose HSTS switch is on. */
+  const selectedHstsDomains = useMemo(() => {
+    const domains = new Set<string>();
+    for (const rule of proxies) {
+      if (selected.has(rule.id) && rule.domain && hstsHostnames.has(rule.domain)) {
+        domains.add(rule.domain);
+      }
+    }
+    return [...domains];
+  }, [proxies, selected, hstsHostnames]);
 
   const handleToggle = async (rule: ProxyRule) => {
     try {
@@ -460,7 +492,7 @@ export function DashboardPage() {
                 {filtered.map((rule) => {
                   const displayType = getDisplayType(rule);
                   const route = getRoute(rule);
-                  const health = getRuleHealth(rule, certIds, hostnames);
+                  const health = getRuleHealth(rule, certIds, expiringCertIds, hstsHostnames, hostnames);
                   return (
                     <tr
                       key={rule.id}
@@ -590,6 +622,11 @@ export function DashboardPage() {
           onConfirm={handleDelete}
           title={t('common.delete')}
           message={t('dashboard.confirmDelete', { name: deleteTarget?.name })}
+          detail={
+            deleteTarget?.domain && hstsHostnames.has(deleteTarget.domain)
+              ? t('dashboard.deleteHstsWarning', { domains: deleteTarget.domain })
+              : undefined
+          }
           confirmText={t('common.delete')}
           danger
         />
@@ -631,6 +668,11 @@ export function DashboardPage() {
           onConfirm={handleBatchDelete}
           title={t('common.delete')}
           message={t('dashboard.batchDeleteConfirm', { count: selected.size })}
+          detail={
+            selectedHstsDomains.length > 0
+              ? t('dashboard.deleteHstsWarning', { domains: selectedHstsDomains.join(', ') })
+              : undefined
+          }
           confirmText={t('common.delete')}
           danger
         />

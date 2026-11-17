@@ -60,6 +60,8 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
   title: string;
   message: string;
+  /** A secondary, warning-toned line; it never changes what the buttons do. */
+  detail?: string;
   confirmText?: string;
   danger?: boolean;
 }
@@ -70,6 +72,7 @@ export function ConfirmDialog({
   onConfirm,
   title,
   message,
+  detail,
   confirmText,
   danger,
 }: ConfirmDialogProps) {
@@ -98,6 +101,7 @@ export function ConfirmDialog({
       }
     >
       <p className="text-[13px] text-text-secondary">{message}</p>
+      {detail && <p className="text-[12px] text-warning mt-2">{detail}</p>}
     </Dialog>
   );
 }

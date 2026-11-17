@@ -6,6 +6,7 @@
 | 2026-04-04 | Initial design | Phase 2a |
 | 2026-04-04 | Add port conflict detection, multi-domain per port, CI build matrix, theme toggle, cert permissions | Gate 2 feedback |
 | 2026-11-17 | Add `hostname_settings` data model for HSTS + default security header switches | Ticket #20 |
+| 2026-11-17 | HSTS is emitted on TLS-terminating server blocks behind a per-hostname switch | Ticket #23 |
 
 ## Architecture Overview
 
@@ -293,9 +294,9 @@ Stopped ────────► Running ◄────────► Runni
 | Field | Type | Constraints | Notes |
 |-------|------|-------------|-------|
 | hostname | TEXT | PK | 域名；设置对同域名的所有端口与路径生效 |
-| hsts_enabled | INTEGER | NOT NULL, DEFAULT 0 | 本版只存储，不生成 HSTS 头 |
-| hsts_max_age | INTEGER | NOT NULL, DEFAULT 300 | 秒 |
-| hsts_include_subdomains | INTEGER | NOT NULL, DEFAULT 0 | |
+| hsts_enabled | INTEGER | NOT NULL, DEFAULT 0 | 1 = 在该域名的 TLS 终止 server block 上下发 `Strict-Transport-Security`；不提供 preload |
+| hsts_max_age | INTEGER | NOT NULL, DEFAULT 300 | 秒，1–31536000 |
+| hsts_include_subdomains | INTEGER | NOT NULL, DEFAULT 0 | 1 = 追加 `; includeSubDomains` |
 | sec_nosniff | INTEGER | NOT NULL, DEFAULT 1 | → `X-Content-Type-Options: nosniff` |
 | sec_referrer_policy | INTEGER | NOT NULL, DEFAULT 1 | → `Referrer-Policy: strict-origin-when-cross-origin` |
 | sec_frame_options | INTEGER | NOT NULL, DEFAULT 1 | → `X-Frame-Options: SAMEORIGIN` |
